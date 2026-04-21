@@ -1,0 +1,15 @@
+{
+  "name": "studio-file-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "dotenv": "^16.0.0",
+    "fast-xml-parser": "^4.3.0",
+    "zod": "^3.22.0"
+  }
+}

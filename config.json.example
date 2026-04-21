@@ -1,0 +1,7 @@
+{
+  "workspace_path": "/path/to/your/Studio Workspace",
+  "max_file_size_kb": 500,
+  "backup_on_write": true,
+  "excluded_dirs": [".git", ".settings", "bin", "build", "node_modules", ".metadata", ".plugins"],
+  "excluded_extensions": [".class", ".jar", ".zip", ".bak"]
+}
