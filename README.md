@@ -33,8 +33,8 @@ Claude connects to this server and gains 19 tools for working with Studio projec
 **1. Clone and install**
 
 ```bash
-git clone https://github.com/gkchaitanya1503/workday-studio-mcp.git
-cd workday-studio-mcp
+git clone https://github.com/krishnagutta/Workday-studio-mcp.git
+cd Workday-studio-mcp
 npm install
 ```
 
