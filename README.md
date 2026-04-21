@@ -79,21 +79,48 @@ Press `Ctrl+C` to stop — you only need it running when Claude is connected.
 
 ---
 
-## Connect to Claude.ai
+## Connect to Claude
 
-1. Go to **Claude.ai → Settings → Integrations** (or Connectors)
-2. Click **Add custom integration**
-3. Fill in:
-   - **Name:** `Studio MCP`
-   - **Command:** `node /full/path/to/Workday-studio-mcp/src/index.mjs`
+Choose whichever client you use — both work the same way.
 
-   Replace `/full/path/to/` with the actual path where you cloned the repo. Example:
-   ```
-   node /Users/yourname/Documents/Workday-studio-mcp/src/index.mjs
-   ```
-4. Save. The 19 tools will appear in Claude's tool list.
+### Option A — Claude Desktop
 
-> **Note:** Claude launches the server automatically when you start a conversation — you don't need to keep a terminal open.
+Edit the Claude Desktop config file:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add the `studio-mcp` entry inside `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "studio-mcp": {
+      "command": "node",
+      "args": ["/absolute/path/to/Workday-studio-mcp/src/index.mjs"]
+    }
+  }
+}
+```
+
+Replace the path with wherever you cloned the repo. Save the file, then **restart Claude Desktop**. The 19 tools will appear automatically in every conversation.
+
+### Option B — Claude Code (CLI)
+
+Run once from any terminal:
+
+```bash
+claude mcp add studio-mcp node /absolute/path/to/Workday-studio-mcp/src/index.mjs
+```
+
+That's it — Claude Code picks it up immediately, no restart needed.
+
+To confirm it registered:
+```bash
+claude mcp list
+```
+
+> **Tip:** Use `which node` to get your full node path if Claude can't find it (e.g. `/usr/local/bin/node`).
 
 ---
 
@@ -180,7 +207,7 @@ You haven't created `config.json` yet. Run `cp config.json.example config.json` 
 The path in `config.json` doesn't exist on your machine. Check the path points to your Studio Workspace folder (the one Eclipse opens).
 
 **Tools don't appear in Claude**
-Make sure the command in the Claude connector settings uses the full absolute path to `src/index.mjs`, not a relative path.
+Make sure the path in `claude_desktop_config.json` (or the `claude mcp add` command) is an absolute path, not relative. Restart Claude Desktop after editing the config file.
 
 **`node: command not found` in Claude**
 Claude can't find Node.js. Use the full path to node in the connector command:
