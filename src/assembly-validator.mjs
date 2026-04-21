@@ -15,6 +15,8 @@ export function validateAssembly(xml, wsDir = null) {
   checkBrokenRoutes(xml, issues);
   checkLocalOutEndpoints(xml, issues);
   checkRequiredAttributes(xml, issues);
+  checkTopLevelOnlyElements(xml, issues);
+  checkSplitterRoutes(xml, issues);
   if (wsDir) checkXslFileReferences(xml, wsDir, issues);
   checkTodoStubs(xml, issues);
 
@@ -135,6 +137,51 @@ function checkRequiredAttributes(xml, issues) {
     // xslt-plus: check url
     if (tagName === 'cc:xslt-plus' && !tagText.includes('url=')) {
       issues.push({ severity: 'ERROR', code: 'MISSING_ATTR_URL', message: `cc:xslt-plus (id="${extractId(tagText)}") is missing required attribute url= (path to .xsl file).` });
+    }
+  }
+}
+
+// ─── Rule: certain elements must be TOP-LEVEL, not inside cc:steps ───────────
+// cc:workday-out-rest, cc:splitter, cc:http-out, cc:email-out are assembly-level
+// routing elements. Studio's schema rejects them inside cc:steps.
+// Confirmed from INT999, INT999, INT999, INT999.
+
+const TOP_LEVEL_ONLY = ['cc:workday-out-rest', 'cc:splitter', 'cc:http-out', 'cc:email-out', 'cc:workday-out-soap'];
+
+function checkTopLevelOnlyElements(xml, issues) {
+  // Find every <cc:steps> block and check its content
+  const stepsPattern = /<cc:steps>([\s\S]*?)<\/cc:steps>/g;
+  for (const stepsMatch of xml.matchAll(stepsPattern)) {
+    const stepsContent = stepsMatch[1];
+    for (const tag of TOP_LEVEL_ONLY) {
+      if (stepsContent.includes(`<${tag}`)) {
+        // Find the id of the containing async-mediation for a useful error message
+        const stepsIdx = stepsMatch.index;
+        const before = xml.substring(0, stepsIdx);
+        const asyncMedMatch = [...before.matchAll(/<cc:async-mediation\b[^>]*>/g)].pop();
+        const containerId = asyncMedMatch ? extractId(asyncMedMatch[0]) : '?';
+        issues.push({
+          severity: 'ERROR',
+          code: 'ELEMENT_INSIDE_STEPS',
+          message: `<${tag}> found inside <cc:steps> of "${containerId}". This is a top-level assembly element — it must sit directly inside <cc:assembly>, not inside cc:steps. Move it out of the async-mediation and chain it via routes-to/routes-response-to.`,
+        });
+      }
+    }
+  }
+}
+
+// ─── Rule: cc:splitter must NOT have a routes-to attribute ───────────────────
+// Studio's schema does not allow routes-to on cc:splitter. The splitter routes
+// via its cc:sub-route children only. Confirmed INT999, INT999.
+
+function checkSplitterRoutes(xml, issues) {
+  for (const m of xml.matchAll(/<cc:splitter\b[^>]*>/g)) {
+    if (m[0].includes('routes-to=')) {
+      issues.push({
+        severity: 'ERROR',
+        code: 'SPLITTER_HAS_ROUTES_TO',
+        message: `cc:splitter (id="${extractId(m[0])}") has a routes-to attribute — the Studio schema does not allow this. Remove routes-to from the splitter. Routing is done via cc:sub-route children only.`,
+      });
     }
   }
 }
