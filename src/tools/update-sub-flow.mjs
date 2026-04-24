@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { readFile, writeFile, copyFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { existsSync } from 'fs';
 import { XMLParser } from 'fast-xml-parser';
 import { config } from '../config.mjs';
+import { resolveSafe } from '../fs.mjs';
 import { validateAssembly } from '../assembly-validator.mjs';
 
 // ─── Public tool registration ─────────────────────────────────────────────────
@@ -53,7 +54,15 @@ export function register(server) {
         .describe('New step elements for inside <cc:steps>. Omit the <cc:steps> wrapper. Use \\t for tabs at 4-tab depth.'),
     },
     async ({ project_name, sub_flow_id, steps_xml }) => {
-      const projectPath = resolve(config.workspacePath, project_name);
+      let projectPath;
+      try {
+        ({ projectRoot: projectPath } = resolveSafe(project_name, ''));
+      } catch (e) {
+        if (e.code === 'PATH_TRAVERSAL_DETECTED') {
+          return errResponse('INVALID_PROJECT_NAME', `Invalid project name: ${project_name}`, 'Project name must not contain path traversal sequences such as ../');
+        }
+        throw e;
+      }
       const assemblyPath = join(projectPath, 'ws', 'WSAR-INF', 'assembly.xml');
 
       if (!existsSync(assemblyPath)) {

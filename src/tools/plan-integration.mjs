@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { writeFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { existsSync } from 'fs';
 import { config } from '../config.mjs';
+import { resolveSafe } from '../fs.mjs';
 
 // ─── Design brief schema ──────────────────────────────────────────────────────
 
@@ -131,7 +132,15 @@ export function register(server) {
       design_brief: DesignBriefSchema,
     },
     async ({ project_name, sub_flows, design_brief }) => {
-      const projectPath = resolve(config.workspacePath, project_name);
+      let projectPath;
+      try {
+        ({ projectRoot: projectPath } = resolveSafe(project_name, ''));
+      } catch (e) {
+        if (e.code === 'PATH_TRAVERSAL_DETECTED') {
+          return errorResponse('INVALID_PROJECT_NAME', `Invalid project name: ${project_name}`, 'Project name must not contain path traversal sequences such as ../');
+        }
+        throw e;
+      }
       const wsDir = join(projectPath, 'ws', 'WSAR-INF');
 
       if (!existsSync(projectPath)) {
