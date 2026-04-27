@@ -18,6 +18,7 @@ export function validateAssembly(xml, wsDir = null) {
   checkTopLevelOnlyElements(xml, issues);
   checkSplitterRoutes(xml, issues);
   if (wsDir) checkXslFileReferences(xml, wsDir, issues);
+  checkCcNote(xml, issues);
   checkTodoStubs(xml, issues);
 
   return issues;
@@ -198,6 +199,22 @@ function checkXslFileReferences(xml, wsDir, issues) {
         message: `url="${xslFile}" — file not found in WSAR-INF. Create it with create_xsl_transform before testing.`,
       });
     }
+  }
+}
+
+// ─── Rule: cc:note is schema-invalid in assembly.xml ─────────────────────────
+// Studio's schema rejects cc:note as a cc:assembly child. The correct terminal
+// pattern is an cc:async-mediation with no routes-to attribute.
+// Also: cc:note in assembly-diagram.xml crashes Studio (scala.MatchError).
+
+function checkCcNote(xml, issues) {
+  const matches = [...xml.matchAll(/<cc:note\b/g)];
+  if (matches.length > 0) {
+    issues.push({
+      severity: 'ERROR',
+      code: 'CC_NOTE_IN_ASSEMBLY',
+      message: `Found ${matches.length} <cc:note> element(s). cc:note is schema-invalid in assembly.xml and crashes Studio if added to assembly-diagram.xml. Replace with an cc:async-mediation that has no routes-to attribute — that is the correct terminal pattern.`,
+    });
   }
 }
 

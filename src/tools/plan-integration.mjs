@@ -322,17 +322,14 @@ function buildAssemblyXml(projectName, subFlows, designBrief) {
   for (const sf of subFlows) {
     lines.push(`
 \t\t<cc:local-in id="${sf.id}" routes-to="Do${sf.id}"/>
-\t\t<cc:async-mediation id="Do${sf.id}" routes-to="End${sf.id}" handle-downstream-errors="true">
+\t\t<cc:async-mediation id="Do${sf.id}" handle-downstream-errors="true">
 \t\t\t<cc:steps>
 \t\t\t\t<cc:log id="TODO_${sf.id}">
 \t\t\t\t\t<cc:log-message><cc:text>TODO: ${sf.description}</cc:text></cc:log-message>
 \t\t\t\t</cc:log>
 \t\t\t</cc:steps>
 \t\t\t<cc:send-error id="${sf.id}Error" rethrow-error="false" routes-to="Put${sf.id}Error"/>
-\t\t</cc:async-mediation>
-\t\t<cc:note id="End${sf.id}">
-\t\t\t<cc:description>TODO: replace with next step or chain to the next local-out.</cc:description>
-\t\t</cc:note>`);
+\t\t</cc:async-mediation>`);
   }
 
   // Global error handler
