@@ -1,5 +1,7 @@
 # Workday Studio MCP
 
+> **Deprecated.** This project has been superseded by [extend-kit](https://github.com/snedea/extend-kit), which delivers the same validation rules and workflows as portable skills and rules instead of an MCP server. No further development will happen here.
+
 A local MCP (Model Context Protocol) server that gives Claude direct access to your Workday Studio workspace. Read, write, plan, and validate integration assemblies without copy-pasting XML back and forth.
 
 ---
