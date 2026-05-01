@@ -2,21 +2,39 @@
 
 A local MCP (Model Context Protocol) server that gives Claude direct access to your Workday Studio workspace. Read, write, plan, and validate integration assemblies without copy-pasting XML back and forth.
 
+Everything runs **locally** on your machine — no network calls, no tenant credentials, no shared state. The server only sees the Studio Workspace folder you point it at.
+
 ---
 
-## What it does
+## What you get
 
-Claude connects to this server and gains 19 tools for working with Studio projects:
+20 tools across these categories:
 
-| Category | Tools |
+| Category | What it does |
 |---|---|
-| **Navigation** | List projects, list files, read files, search across files, workspace tree |
-| **File management** | Write files, copy, rename, delete |
-| **Planning** | Design elicitation + skeleton generator (`plan_integration`) |
-| **Assembly editing** | List steps, add steps, replace sub-flow body (`update_sub_flow`) |
-| **XSL** | Generate transform file stubs (`create_xsl_transform`) |
-| **Validation** | XML well-formedness, Studio-specific rules (`validate_assembly`) |
-| **Reference** | Step type documentation with confirmed production examples |
+| **Navigation** | `list_studio_projects`, `list_project_files`, `read_integration_file`, `search_studio_files`, `get_workspace_structure` |
+| **File management** | `write_integration_file`, `copy_file_from_project`, `rename_file`, `delete_file`, `validate_xml_file` |
+| **Project setup** | `create_studio_project`, `create_xsl_transform` |
+| **Assembly editing** | `list_assembly_steps`, `list_integration_params`, `add_assembly_step`, `update_sub_flow`, `validate_assembly` |
+| **Planning** | `plan_integration` — design elicitation + skeleton generator |
+| **Reference** | `get_step_type_reference` — confirmed step type docs with production XML examples |
+| **Diagnostics** | `parse_server_log` — parse a Workday integration server log from `~/Downloads` |
+
+A growing knowledge base lives at [`docs/studio-integration-patterns.md`](docs/studio-integration-patterns.md) — hard-won lessons captured from real Studio debugging sessions.
+
+---
+
+## Quick install
+
+One line:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/krishnagutta/Workday-studio-mcp/main/bin/quickstart.sh | bash
+```
+
+This clones the repo to `~/Workday-studio-mcp`, installs dependencies, and prints the exact `claude mcp add` command for your machine.
+
+Or do it manually — see **Manual setup** below.
 
 ---
 
@@ -24,11 +42,11 @@ Claude connects to this server and gains 19 tools for working with Studio projec
 
 - **Node.js 18+** — check with `node --version`
 - **Workday Studio** installed with at least one project in your workspace
-- **Claude.ai** account with access to custom MCP connectors (Team or higher plan)
+- **Claude Desktop** or **Claude Code (CLI)** — both work
 
 ---
 
-## Setup
+## Manual setup
 
 **1. Clone and install**
 
@@ -44,7 +62,7 @@ npm install
 cp config.json.example config.json
 ```
 
-Open `config.json` and set `workspace_path` to the folder that contains your Studio projects:
+Open `config.json` and set `workspace_path` to the folder containing your Studio projects (the same one Eclipse opens):
 
 ```json
 {
@@ -56,9 +74,7 @@ Open `config.json` and set `workspace_path` to the folder that contains your Stu
 }
 ```
 
-Your workspace folder is the one that contains `INT###_ProjectName` directories — the same folder Eclipse opens when you launch Studio.
-
-Alternatively, skip `config.json` entirely and set an environment variable:
+Or skip `config.json` entirely and use an env var:
 
 ```bash
 export STUDIO_WORKSPACE_PATH="/Users/yourname/Documents/Studio Workspace"
@@ -75,22 +91,30 @@ You should see:
 [studio-mcp] Server started. Workspace: /Users/yourname/Documents/Studio Workspace
 ```
 
-Press `Ctrl+C` to stop — you only need it running when Claude is connected.
+Press `Ctrl+C` to stop — Claude will spawn it on demand.
 
 ---
 
 ## Connect to Claude
 
-Choose whichever client you use — both work the same way.
+### Option A — Claude Code (CLI)
 
-### Option A — Claude Desktop
+```bash
+claude mcp add studio-mcp node /absolute/path/to/Workday-studio-mcp/src/index.mjs
+```
 
-Edit the Claude Desktop config file:
+Confirm:
+```bash
+claude mcp list
+```
 
+### Option B — Claude Desktop
+
+Edit the config file:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-Add the `studio-mcp` entry inside `mcpServers`:
+Add inside `mcpServers`:
 
 ```json
 {
@@ -103,52 +127,49 @@ Add the `studio-mcp` entry inside `mcpServers`:
 }
 ```
 
-Replace the path with wherever you cloned the repo. Save the file, then **restart Claude Desktop**. The 19 tools will appear automatically in every conversation.
+Save and **restart Claude Desktop**.
 
-### Option B — Claude Code (CLI)
-
-Run once from any terminal:
-
-```bash
-claude mcp add studio-mcp node /absolute/path/to/Workday-studio-mcp/src/index.mjs
-```
-
-That's it — Claude Code picks it up immediately, no restart needed.
-
-To confirm it registered:
-```bash
-claude mcp list
-```
-
-> **Tip:** Use `which node` to get your full node path if Claude can't find it (e.g. `/usr/local/bin/node`).
+> **Tip:** Use `which node` to get your full node path if Claude can't find it.
 
 ---
 
-## How to use it
+## Use it
 
-### List your projects
+### List projects
 > "List my Studio projects"
 
 ### Read a file
-> "Read the assembly.xml from INT002"
+> "Read the assembly.xml from INT145"
 
 ### Plan a new integration
 > "I need to build a new integration"
 
-Claude will ask you a series of design questions (data source, destination, trigger, record volume, auth, error handling, etc.) before generating anything. Once answered, it writes a complete skeleton `assembly.xml` + `assembly-diagram.xml` you can open in Studio immediately.
+Claude asks design questions (data source, destination, trigger, record volume, auth, error handling) before generating anything. Then it writes a skeleton `assembly.xml` + `assembly-diagram.xml` you can open in Studio immediately.
 
 ### Fill in a sub-flow
-> "Fill in the GetWorkers sub-flow — here's a sample from the RAAS report: [paste XML]"
+> "Fill in the GetWorkers sub-flow — here's the RAAS sample: [paste XML]"
 
-Claude uses `update_sub_flow` to surgically replace the TODO stub with real steps, then automatically validates the result.
+`update_sub_flow` surgically replaces the TODO stub with real steps and validates the result.
 
 ### Search across integrations
-> "Find all places where integrationMapLookup is used"
+> "Find all uses of integrationMapLookup"
 
-### Validate an assembly
+### Validate
 > "Validate the assembly for INT145"
 
-Returns errors (broken routes, XML comments, missing required attributes) and warnings (missing XSL files, unresolved sub-flow endpoints).
+Returns errors (broken routes, illegal comments, missing attributes) and warnings (missing XSL files, unresolved sub-flow endpoints).
+
+### Look up a step type
+> "Show me the cc:http-out reference"
+
+Returns confirmed XML examples, schema rules, and gotchas.
+
+### Parse a server log
+After downloading a `server-{wid}.log` from Workday (View Integration Events → expand documents → click the `server-*.log`):
+
+> "Parse my latest server log"
+
+Returns structured timeline, unique errors, and XSLT messages. The parser auto-finds the most recent `server-*.log` in `~/Downloads`.
 
 ---
 
@@ -157,11 +178,11 @@ Returns errors (broken routes, XML comments, missing required attributes) and wa
 ```
 Workday-studio-mcp/
 ├── src/
-│   ├── index.mjs               # Entry point — registers all tools and starts server
-│   ├── config.mjs              # Loads workspace path from config.json or env var
-│   ├── fs.mjs                  # File system helpers and path traversal protection
-│   ├── xml.mjs                 # XML validation wrapper (fast-xml-parser)
-│   ├── assembly-validator.mjs  # Studio-specific assembly rules engine
+│   ├── index.mjs               # Entry — registers tools, starts server
+│   ├── config.mjs              # Loads workspace path
+│   ├── fs.mjs                  # FS helpers + path traversal protection
+│   ├── xml.mjs                 # XML validation wrapper
+│   ├── assembly-validator.mjs  # Studio-specific assembly rules
 │   └── tools/
 │       ├── list-projects.mjs
 │       ├── list-files.mjs
@@ -178,11 +199,18 @@ Workday-studio-mcp/
 │       ├── copy-file-from-project.mjs
 │       ├── rename-file.mjs
 │       ├── delete-file.mjs
-│       ├── get-step-type-reference.mjs  # Step type docs with production examples
-│       ├── plan-integration.mjs         # Design elicitation + skeleton generation
-│       ├── update-sub-flow.mjs          # Surgical sub-flow body replacement
-│       └── validate-assembly.mjs        # Studio validation tool
+│       ├── get-step-type-reference.mjs   # Step type docs
+│       ├── plan-integration.mjs          # Design elicitation
+│       ├── update-sub-flow.mjs           # Surgical sub-flow replacement
+│       ├── validate-assembly.mjs         # Studio rules engine
+│       └── parse-server-log.mjs          # Local log parser
+├── docs/
+│   └── studio-integration-patterns.md    # Shared knowledge base
+├── bin/
+│   ├── install.sh
+│   └── quickstart.sh
 ├── config.json.example
+├── CLAUDE.md                   # Instructions for Claude when working in this repo
 ├── package.json
 └── .gitignore
 ```
@@ -191,27 +219,39 @@ Workday-studio-mcp/
 
 ## Security
 
-- The server only has access to files inside your configured `workspace_path` — path traversal attempts are blocked.
-- No credentials, API keys, or Workday tenant details are stored in this repo or passed through the server.
-- `config.json` (which contains your local workspace path) is gitignored and never committed.
-- The server runs locally over stdio — no network ports are opened.
+- The server only sees files inside your configured `workspace_path` — path traversal attempts are blocked.
+- No credentials, API keys, or Workday tenant details are stored or transmitted.
+- `config.json` (which contains your local workspace path) is gitignored.
+- The server runs over stdio — no network ports are opened.
+
+---
+
+## Contributing patterns back
+
+When you discover a new Studio quirk, schema rule, or assembly pattern, add it to [`docs/studio-integration-patterns.md`](docs/studio-integration-patterns.md) and open a PR. See [`CLAUDE.md`](CLAUDE.md) for guidance on what kinds of learnings belong there. The goal is a collective memory across the team — every debugging session that finds a new gotcha makes the next one cheaper.
 
 ---
 
 ## Troubleshooting
 
 **`workspace_path not configured`**
-You haven't created `config.json` yet. Run `cp config.json.example config.json` and set your path.
+Run `cp config.json.example config.json` and set the path.
 
 **`Workspace path does not exist`**
-The path in `config.json` doesn't exist on your machine. Check the path points to your Studio Workspace folder (the one Eclipse opens).
+Check the path in `config.json` matches your Studio workspace folder.
 
 **Tools don't appear in Claude**
-Make sure the path in `claude_desktop_config.json` (or the `claude mcp add` command) is an absolute path, not relative. Restart Claude Desktop after editing the config file.
+Ensure the path in your Claude config is absolute, not relative. Restart Claude Desktop after editing.
 
 **`node: command not found` in Claude**
-Claude can't find Node.js. Use the full path to node in the connector command:
+Use the full node path:
 ```
 /usr/local/bin/node /full/path/to/src/index.mjs
 ```
-Find your node path with `which node` in a terminal.
+Find it with `which node`.
+
+---
+
+## License
+
+MIT

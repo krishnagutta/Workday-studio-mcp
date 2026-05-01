@@ -1,6 +1,6 @@
-import { readdir, readFile, stat, writeFile, copyFile } from 'fs/promises';
+import { readdir, readFile, stat, writeFile, copyFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
-import { resolve, join, relative, extname, basename } from 'path';
+import { resolve, join, dirname, relative, extname, basename } from 'path';
 import { config } from './config.mjs';
 
 const INTEGRATION_EXTENSIONS = new Set(['.xsl', '.xslt', '.xml', '.wsdl', '.xsd']);
@@ -113,17 +113,42 @@ export async function readFileSafe(absolute) {
   return { content, size_bytes: s.size, last_modified: s.mtime.toISOString() };
 }
 
-export async function writeFileSafe(absolute, content, createBackup) {
-  const backupPath = absolute + '.bak';
+// ─── Timestamped backup helpers ───────────────────────────────────────────────
 
-  if (createBackup && existsSync(absolute)) {
-    await copyFile(absolute, backupPath);
+function backupTimestamp() {
+  const d = new Date();
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${p(d.getMilliseconds(), 3)}`;
+}
+
+async function pruneOldBackups(absolute, keep = 5) {
+  const dir = dirname(absolute);
+  const prefix = basename(absolute) + '.bak.';
+  const all = await readdir(dir).catch(() => []);
+  const backups = all.filter(n => n.startsWith(prefix)).sort().reverse();
+  for (const old of backups.slice(keep)) {
+    await unlink(join(dir, old)).catch(() => {});
   }
+}
 
+/**
+ * Creates a timestamped backup of `absolute` (if it exists) then prunes old
+ * backups beyond the last `keep` copies. Returns the backup path or null.
+ */
+export async function backupFile(absolute, keep = 5) {
+  if (!existsSync(absolute)) return null;
+  const backupPath = `${absolute}.bak.${backupTimestamp()}`;
+  await copyFile(absolute, backupPath);
+  await pruneOldBackups(absolute, keep);
+  return backupPath;
+}
+
+export async function writeFileSafe(absolute, content, createBackup) {
+  const backupPath = createBackup ? await backupFile(absolute) : null;
   await writeFile(absolute, content, 'utf8');
   return {
     bytes_written: Buffer.byteLength(content, 'utf8'),
-    backup_path: createBackup && existsSync(absolute) ? backupPath : null,
+    backup_path: backupPath,
   };
 }
 

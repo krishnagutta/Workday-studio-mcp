@@ -1,5 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { config } from './config.mjs';
 
 import { register as registerListProjects } from './tools/list-projects.mjs';
@@ -21,6 +24,8 @@ import { register as registerGetStepTypeReference } from './tools/get-step-type-
 import { register as registerPlanIntegration } from './tools/plan-integration.mjs';
 import { register as registerUpdateSubFlow } from './tools/update-sub-flow.mjs';
 import { register as registerValidateAssembly } from './tools/validate-assembly.mjs';
+import { register as registerParseServerLog } from './tools/parse-server-log.mjs';
+import { register as registerLogLearning } from './tools/log-learning.mjs';
 
 const server = new McpServer({
   name: 'studio-file-mcp',
@@ -58,7 +63,38 @@ registerPlanIntegration(server);
 registerUpdateSubFlow(server);
 registerValidateAssembly(server);
 
+// Diagnostics (parses local log files only — no network calls)
+registerParseServerLog(server);
+
+// Knowledge capture — Claude calls this automatically when it discovers something new
+registerLogLearning(server);
+
+// ----------------------------------------------------------------------------
+// Optional local extensions (gitignored, never part of the public distribution).
+//
+// The public MCP is purely local file-ops. If a user wants tenant-connecting
+// tools (SOAP launch / poll / fetch document URL etc.) they can drop a
+// `src/local-extensions.mjs` file that exports `registerLocalTools(server)`.
+// That file is gitignored — it stays on the user's machine.
+// ----------------------------------------------------------------------------
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const localExtPath = join(__dirname, 'local-extensions.mjs');
+let localExtensionCount = 0;
+if (existsSync(localExtPath)) {
+  try {
+    const localExt = await import('./local-extensions.mjs');
+    if (typeof localExt.registerLocalTools === 'function') {
+      localExtensionCount = localExt.registerLocalTools(server) ?? 0;
+    }
+  } catch (e) {
+    process.stderr.write(`[studio-mcp] WARN: local-extensions.mjs failed to load: ${e.message}\n`);
+  }
+}
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 
-process.stderr.write(`[studio-mcp] Server started. Workspace: ${config.workspacePath}\n`);
+const extSuffix = localExtensionCount > 0
+  ? ` (+${localExtensionCount} local extension${localExtensionCount === 1 ? '' : 's'})`
+  : '';
+process.stderr.write(`[studio-mcp] Server started. Workspace: ${config.workspacePath}${extSuffix}\n`);

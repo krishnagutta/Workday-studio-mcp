@@ -9,7 +9,7 @@ export function register(server) {
     'list_project_files',
     'List all integration files in a specific Studio project. Focuses on ws/WSAR-INF/ where transforms and assembly files live.',
     {
-      project_name: z.string().describe('The name of the Studio integration project (e.g. INT002_Lyft_CW_Onboarding)'),
+      project_name: z.string().describe('The name of the Studio integration project (e.g. INT001_Sample_Integration)'),
       file_type: z.enum(['xsl', 'xml', 'all']).optional().describe('Filter by file type: "xsl" for transforms, "xml" for XML/assembly files, "all" for all integration files. Defaults to "all".'),
     },
     async ({ project_name, file_type = 'all' }) => {

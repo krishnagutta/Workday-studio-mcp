@@ -136,7 +136,7 @@ const REFERENCE = {
 </cc:transform>`,
   },
   'xslt-plus': {
-    description: 'Like cc:transform but supports non-XML outputs (JSON, CSV, text) via output-mimetype. Used inside cc:async-mediation cc:steps.\n\nKEY RULES (confirmed from production integrations):\n1. cc:xslt-plus REQUIRES the current message to be valid XML. If you need to build JSON from props (not from incoming XML), write a <request/> stub first with cc:write, then apply cc:xslt-plus.\n2. All props map entries are automatically passed to the XSL as xsl:param values. Declare matching xsl:params in the stylesheet.\n3. xsl:param names CANNOT contain dots — dots are not valid XML NCName characters. Use underscores instead: DF_XRefCode not DF.XRefCode. Props keys can have dots (they are just strings in MVEL), but the xsl:param must use underscores.\n4. output-mimetype sets the Content-Type header automatically for subsequent cc:http-out calls.',
+    description: 'Like cc:transform but supports non-XML outputs (JSON, CSV, text) via output-mimetype. Used inside cc:async-mediation cc:steps.\n\nKEY RULES (confirmed from production integrations):\n1. cc:xslt-plus REQUIRES the current message to be valid XML. If you need to build JSON from props (not from incoming XML), write a <request/> stub first with cc:write, then apply cc:xslt-plus.\n2. All props map entries are automatically passed to the XSL as xsl:param values. Declare matching xsl:params in the stylesheet.\n3. xsl:param names CANNOT contain dots — dots are not valid XML NCName characters. Use underscores instead: DF_XRefCode not DF.XRefCode. Props keys can have dots (they are just strings in MVEL), but the xsl:param must use underscores.\n4. output-mimetype sets the Content-Type header automatically for subsequent cc:http-out calls.\n\nXSLT 3.0 STREAMING (confirmed INT_Studio_StarterKit 2025r1.02 — SSK129_StarterTemplate.xsl):\n\nStudio supports XSLT 3.0 with streaming for large payloads. Key patterns:\n\n1. STREAMING MODES:\n   <xsl:mode streamable="yes" on-no-match="shallow-skip"/>  — default streaming mode. Each node is processed once and discarded.\n   <xsl:mode name="in-memory" streamable="no" on-no-match="shallow-skip"/> — non-streaming mode for nodes already pulled into memory.\n   <xsl:mode name="replicate" streamable="yes" on-no-match="shallow-copy"/> — streaming copy mode.\n\n2. STREAM ROOT + READ CHILDREN ONE AT A TIME:\n   <xsl:apply-templates select="*/copy-of()" mode="in-memory"/>  — processes root element\'s children as in-memory nodes, one by one.\n\n3. xsl:ITERATE + xsl:NEXT-ITERATION for streaming loops with carried state (lookup data, counters):\n   <xsl:iterate select="wd:Report_Data/wd:Report_Entry">\n     <xsl:param name="lookupData1" as="document-node()*" select="()"/>\n     <!-- process one entry -->\n     <xsl:next-iteration><xsl:with-param name="lookupData1" select="$lookupData1"/></xsl:next-iteration>\n   </xsl:iterate>\n\n4. snapshot() — materializes the first document node as a fully in-memory document so xsl:key lookups work:\n   <xsl:param name="lookupData1" select="snapshot()" as="document-node()"/>  — use with xsl:key + key() function for O(1) lookups.\n\n5. xsl:TRY / xsl:CATCH for graceful error handling inside XSL:\n   <xsl:try><xsl:catch errors="*"><xsl:value-of select="$err:description"/></xsl:catch></xsl:try>\n   Available error variables: $err:module, $err:code, $err:description, $err:line-number.\n\n6. DYNAMIC LIBRARY INCLUDE with static param (read at XSL compile time from Studio props):\n   <xsl:param name="sskXsltLibMessage" static="yes"\n     select="ctx:getProperty(tube:getCurrentMediationContext(), \'sskXsltLibMessage\')"/>\n   <xsl:include _href="{$sskXsltLibMessage}"/>  — _href is evaluated at compile time using the static param value.\n   Required namespaces: xmlns:ctx="java:com.capeclear.esb.context.property.Context"\n                        xmlns:tube="java:com.capeclear.mediation.impl.tube.Tube"\n\n7. SSK STRUCTURED LOGGING via ssk:createMessage() (SSK112_FunctionLib_Messages.xsl):\n   The SSK ships a function library for structured CloudLog-compatible XML messages:\n   <xsl:value-of select="ssk:createMessage(\'INFO\', \'Worker processed\', $workerId)"/>\n   Returns: <lm><l>INFO</l><m>Worker processed</m><id>12345</id></lm>\n   Overloaded with 1–8 params: (level, message), (level, message, id), (level, message, id, detail), etc.\n   Required namespace: xmlns:ssk="urn:com.workday.custom.ssk.common"\n   Include: <xsl:include _href="{$sskXsltLibMessage}"/> (dynamic, loaded at compile time from Studio prop)',
     routes_via: 'routes-to (inline step inside cc:async-mediation)',
     xml_example: `<!-- Standard use: transform incoming XML to CSV or another XML -->
 <cc:xslt-plus id="CsvXslt" output-mimetype="text/csv" url="WorkersToCsv.xsl"/>
@@ -158,6 +158,90 @@ const REFERENCE = {
     { "EmployeeNumber": "<xsl:value-of select="$DF_XRefCode"/>", "FirstName": "<xsl:value-of select="$DF_FirstName"/>" }
   </xsl:template>
 </xsl:stylesheet>
+-->
+
+<!-- ── XSLT 3.0 Streaming template skeleton (confirmed SSK129) ───────────
+     For large Workday report payloads that cannot fit in memory.
+     Requires Saxon-HE or a streaming-capable XSLT 3.0 processor. -->
+<!--
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="3.0"
+  xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:wd="urn:com.workday/bsvc"
+  xmlns:ssk="urn:com.workday.custom.ssk.common"
+  xmlns:ctx="java:com.capeclear.esb.context.property.Context"
+  xmlns:tube="java:com.capeclear.mediation.impl.tube.Tube"
+  expand-text="yes">
+
+  <!-- ── Streaming modes ── -->
+  <xsl:mode streamable="yes" on-no-match="shallow-skip"/>
+  <xsl:mode name="in-memory" streamable="no" on-no-match="shallow-skip"/>
+
+  <!-- ── Dynamic library include: loaded at XSL compile time from Studio prop ── -->
+  <xsl:param name="sskXsltLibMessage" static="yes"
+    select="ctx:getProperty(tube:getCurrentMediationContext(), 'sskXsltLibMessage')"/>
+  <xsl:include _href="{$sskXsltLibMessage}"/>
+
+  <!-- ── Props automatically passed as xsl:params by Studio ── -->
+  <xsl:param name="Employee_ID"   select="''"/>
+  <xsl:param name="sskIsDebugMode" select="'false'"/>
+
+  <!-- ── Stream root: process each Report_Entry one at a time ── -->
+  <xsl:template match="wd:Report_Data">
+    <output>
+      <!-- xsl:iterate carries state (e.g. lookup data) across entries without
+           loading all entries into memory simultaneously -->
+      <xsl:iterate select="wd:Report_Entry">
+        <xsl:param name="rowNum" as="xs:integer" select="0"/>
+
+        <xsl:try>
+          <xsl:apply-templates select="copy-of()" mode="in-memory">
+            <xsl:with-param name="rowNum" select="$rowNum"/>
+          </xsl:apply-templates>
+          <xsl:catch errors="*">
+            <!-- $err:description, $err:code, $err:module available here -->
+            <xsl:value-of select="ssk:createMessage('ERROR', $err:description, $Employee_ID)"/>
+          </xsl:catch>
+        </xsl:try>
+
+        <xsl:next-iteration>
+          <xsl:with-param name="rowNum" select="$rowNum + 1"/>
+        </xsl:next-iteration>
+      </xsl:iterate>
+    </output>
+  </xsl:template>
+
+  <!-- ── In-memory template for one entry (already a copy-of() snapshot) ── -->
+  <xsl:template match="wd:Report_Entry" mode="in-memory">
+    <xsl:param name="rowNum" as="xs:integer" select="0"/>
+    <row num="{$rowNum}">
+      <xsl:value-of select="wd:Worker_ID"/>
+    </row>
+  </xsl:template>
+
+</xsl:stylesheet>
+-->
+
+<!-- ── XSLT 3.0 with xsl:key lookup using snapshot() ───────────────────
+     First param document is materialised in memory for O(1) key lookups.
+     Remaining entries are streamed one at a time. -->
+<!--
+  <!-- The first document (lookup table) is materialised via snapshot() -->
+  <xsl:param name="lookupData1" as="document-node()" select="snapshot()"/>
+  <xsl:key name="lookupKey1" match="row" use="@id"/>
+
+  <xsl:template match="wd:Report_Data">
+    <xsl:iterate select="wd:Report_Entry">
+      <xsl:variable name="id" select="wd:Worker_ID"/>
+      <!-- O(1) keyed lookup in the snapshotted document -->
+      <xsl:variable name="match" select="key('lookupKey1', $id, $lookupData1)"/>
+      <xsl:if test="count($match) = 1">
+        <mapped><xsl:value-of select="$match/@value"/></mapped>
+      </xsl:if>
+      <xsl:next-iteration/>
+    </xsl:iterate>
+  </xsl:template>
 -->`,
   },
   'http-out': {
@@ -380,18 +464,76 @@ Without this, some props set by the caller may be cleared before the sub-flow ru
 </cc:local-out>`,
   },
   'local-in': {
-    description: 'Entry point for a named sub-flow within the same assembly. Paired with a cc:local-out that calls it via vm://{IntegrationSystemName}/{LocalInId}. The id of the cc:local-in must match the last segment of the vm:// endpoint on the calling cc:local-out.\n\nIn the diagram, each cc:local-in is the leftmost node in its own named horizontal swimlane, making each sub-flow independently navigable in Studio.',
+    description: 'Entry point for a named sub-flow within the same assembly. Paired with a cc:local-out that calls it via vm://{IntegrationSystemName}/{LocalInId}. The id of the cc:local-in must match the last segment of the vm:// endpoint on the calling cc:local-out.\n\nIn the diagram, each cc:local-in is the leftmost node in its own named horizontal swimlane, making each sub-flow independently navigable in Studio.\n\nATTRIBUTES:\n- access="public" — sub-flow is callable from other integrations (default). access="private" restricts to internal use only.\n- use-global-error-handlers="true" — connects this local-in to the assembly-level global error handlers. Without this, uncaught errors in the sub-flow bypass global handlers and may surface incorrectly.\n- icon="icons/iconName.png" — sets the icon displayed on this node in the Studio diagram.\n\nCHILD ELEMENTS — SSK typed parameter API contract (confirmed INT_Studio_StarterKit 2025r1.02):\n\ncc:parameter — declares a TYPED, documented input parameter that the caller must supply via cc:set on the calling cc:local-out. Unlike bare props (untyped string map), cc:parameter defines the type, documentation text, required flag, and a safe default expression. Attributes:\n  - name: the prop name the caller populates via cc:set (and this sub-flow reads from props)\n  - type: "string" | "boolean" | "number" | "xml" | "any"\n  - required="true" — sub-flow throws an error if the caller did not set this param\n  - default="MVEL_EXPR" — evaluated when the caller omits the param. Use context.containsProperty(\'name\') for null-safe guards (see eval entry for context.containsProperty vs props.containsKey).\n  Child text content is the human-readable documentation shown in Studio.\n\ncc:out-parameter — documents which props this sub-flow WRITES BACK to the shared props map after returning. This is documentation-only; it does not enforce the value. Callers read these after routes-response-to fires. Attributes:\n  - name: the prop key this sub-flow writes\n  - type: value type\n  Child text: documentation string.',
     routes_via: 'routes-to',
-    xml_example: `<!-- Naming rule: vm://IntegrationSystemName/LocalInId
-     The LocalInId must match the id attribute exactly. -->
+    xml_example: `<!-- ── Basic cc:local-in (simple sub-flow entry) ────────────────────────
+     Naming rule: vm://IntegrationSystemName/LocalInId -->
 
-<!-- Caller (in main flow): -->
+<!-- Caller (main flow): -->
 <cc:local-out id="CallCSVFlow" store-message="none"
   routes-response-to="CallDayforceFlow"
   endpoint="vm://INT_TEST_GetWorkers_CSV_STU/CSVFlow"/>
 
 <!-- Entry point (start of CSV sub-flow swimlane): -->
-<cc:local-in id="CSVFlow" routes-to="TransformToCSV"/>`,
+<cc:local-in id="CSVFlow" routes-to="TransformToCSV"/>
+
+
+<!-- ── SSK typed parameter API contract pattern ──────────────────────────
+     Confirmed: INT_Studio_StarterKit 2025r1.02
+     cc:parameter declares typed inputs; cc:out-parameter documents outputs.
+     Caller passes values via cc:set children on the cc:local-out. -->
+
+<cc:local-in id="CallSoap"
+  access="public"
+  use-global-error-handlers="true"
+  icon="icons/callSoap.png"
+  routes-to="BuildSoapRequest">
+
+  <!-- Required typed input — caller MUST set this via cc:set -->
+  <cc:parameter name="soapRequestXml" type="xml" required="true">
+    The complete SOAP request XML envelope to send to Workday.
+  </cc:parameter>
+
+  <!-- Optional input with context.containsProperty() null-safe default -->
+  <cc:parameter name="globalApiVersion" type="string"
+    default="context.containsProperty('globalApiVersion') ? props['globalApiVersion'] : '43.0'">
+    Workday API version string (e.g. 43.0). Defaults to 43.0 if not provided.
+  </cc:parameter>
+
+  <!-- Boolean flag with false default -->
+  <cc:parameter name="sskIsDebugMode" type="boolean"
+    default="context.containsProperty('sskIsDebugMode') ? props['sskIsDebugMode'] : false">
+    When true, emits verbose CloudLog debug entries for each step.
+  </cc:parameter>
+
+  <!-- Documented outputs: what this sub-flow writes back to props -->
+  <cc:out-parameter name="soapResponseXml" type="xml">
+    The raw Workday SOAP response XML — available to caller after routes-response-to fires.
+  </cc:out-parameter>
+  <cc:out-parameter name="callStatus" type="string">
+    "SUCCESS" or "FAULT" — set after the SOAP call completes or a SOAP fault is received.
+  </cc:out-parameter>
+</cc:local-in>
+
+<!-- Caller side: supply typed params via cc:set children -->
+<cc:local-out id="CallGetWorkers" store-message="none"
+  routes-response-to="ProcessWorkerResponse"
+  endpoint="vm://INT_SSK/CallSoap">
+  <cc:set name="soapRequestXml"    value="message"/>
+  <cc:set name="globalApiVersion"  value="'43.0'"/>
+  <cc:set name="sskIsDebugMode"    value="props['Is_Debug']"/>
+</cc:local-out>
+
+
+<!-- ── Finally_* teardown pattern (confirmed INT_Studio_StarterKit) ───────
+     Each SSK component has a paired Finally_ComponentName sub-flow called
+     unconditionally after the component finishes — even on error.
+     Pattern: call the component, then call its Finally_ to clean up. -->
+
+<cc:local-out id="Call_Finally_CallSoap" store-message="none"
+  endpoint="vm://INT_SSK/Finally_CallSoap"/>
+<!-- Finally sub-flow handles logging completion, resetting component-scoped
+     props, and signalling the parent flow that the component is done. -->`,
   },
   'async-mediation': {
     description: 'Passes the message asynchronously to the next step. Used to break synchronous call chains. Can contain nested cc:steps for inline processing.',
@@ -473,7 +615,7 @@ Without this, some props set by the caller may be cleared before the sub-flow ru
 <!-- No routes-to = natural terminal. Sub-flow ends here. -->`,
   },
   'eval': {
-    description: 'Executes MVEL expressions to set properties on the message. Used inside cc:async-mediation cc:steps blocks.\n\nKEY MVEL OBJECTS:\n- props: map of message properties. Values set here are automatically passed as XSL stylesheet parameters to any subsequent cc:xslt-plus in the same steps block.\n- lp: launch parameter accessor.\n  · lp.getSimpleData(\'Param Name\') — text/numeric/boolean/enumeration cloud:param. Returns String.\n  · lp.getDate(\'Param Name\') — date cloud:param. Returns formatted date string.\n  · lp.getReferenceData(\'Param Name\', \'WID\') — Worker/object picker param (cloud:class-report-field). Returns WID string.\n  · lp.getReferenceData(\'Param Name\', \'Employee_ID\') — same picker, different ID type. Multiple ID types can be tried.\n  · lp.getSequencedValue(\'Sequencer Name\', \'Sequence_ID\') — get next value from cloud:sequence-generator-service.\n  Null check pattern (always apply to getReferenceData): if(val==null||val==\'null\'||val==empty){val=\'\'}\n  Param Name must match the cloud:param name attribute exactly (spaces included).\n- parts[0].xpath(\'...\') — extract value from current message XML using XPath. Namespaces declared on assembly root are available.\n- context.errorMessage / context.getErrorMessage() — error message in send-error handlers.\n- intsys.getAttribute(\'Attr Name\') — reads a text integration attribute from cloud:attribute-map-service.\n- intsys.getAttributeReferenceData(\'Attr Name\', \'ID_Type\') — reads a reference-type integration attribute (cloud:class-report-field attribute).\n- util.currentDateTimeAsString() — current datetime as ISO string.\n- util.currentDateTimeAsString(\'PST\') — with timezone.\n- props[\'assembly.gateway.address\'] — gateway URL. Use .contains(\'impl\') to detect impl vs prod.\n- props[\'cc.customer.id\'] — the Workday tenant name.\n- props.containsKey(\'keyName\') — boolean check for prop existence; use to guard initialization logic.\n- vars[\'varName\'] — read a variable by bracket notation.\n- vars[\'varName\'].getText() — get string content of a variable (e.g. base64-encoded value).\n- vars.isVariable(\'name\') — boolean; check existence before reading to avoid null dereference.\n- vars.setVariable(\'name\', value, \'text/plain\') — create/update a variable with explicit MIME type (three-argument form).\n\nINTEGRATION MAP LOOKUPS (cloud:attribute-map-service with cloud:map entries):\n- intsys.integrationMapLookup(\'Map Name\', externalValue) — forward lookup: external → Workday internal value.\n- intsys.integrationMapReverseLookup(\'Map Name\', internalValue) — reverse lookup: internal → external.\n- intsys.getAttributeAsBoolean(\'Attr Name\') — reads a boolean integration attribute (not string).\n\nDATE ARITHMETIC (Java Calendar — canonical pattern for all date math in Studio MVEL):\n```\nprops[\'hire_date_parsed\'] = new java.text.SimpleDateFormat("yyyy-MM-dd").parse(props[\'Hire_Date\'])\nprops[\'cal\'] = java.util.Calendar.getInstance()   // static factory, no "new"\nprops[\'cal\'].setTime(props[\'hire_date_parsed\'])\nprops[\'cal\'].add(java.util.Calendar.DATE, -1)    // subtract 1 day\nprops[\'contract_end\'] = new java.text.SimpleDateFormat("yyyy-MM-dd").format(props[\'cal\'].getTime())\n```\nAlso: `Math.round(props[\'Salary\'] * 12)` for numeric rounding.\n\nCONTEXT METHODS:\n- context.isError() — boolean; use in execute-when on cc:local-out to fire sub-flows only on error or only on success.\n- context.errorCode — the error code string (not just the message).\n\nMVEL TERNARY: props[\'x\'] = (condition) ? \'valueIfTrue\' : \'valueIfFalse\'\nMVEL COMMENTS: lines starting with // are ignored at runtime.\nexecute-when ATTRIBUTE: add execute-when="MVEL_EXPRESSION" on any step inside cc:steps to conditionally skip it at runtime. Also valid on cc:local-out and cc:workday-out-soap elements (not just cc:steps children).',
+    description: 'Executes MVEL expressions to set properties on the message. Used inside cc:async-mediation cc:steps blocks.\n\nKEY MVEL OBJECTS:\n- props: map of message properties. Values set here are automatically passed as XSL stylesheet parameters to any subsequent cc:xslt-plus in the same steps block.\n- lp: launch parameter accessor.\n  · lp.getSimpleData(\'Param Name\') — text/numeric/boolean/enumeration cloud:param. Returns String.\n  · lp.getDate(\'Param Name\') — date cloud:param. Returns formatted date string.\n  · lp.getReferenceData(\'Param Name\', \'WID\') — Worker/object picker param (cloud:class-report-field). Returns WID string.\n  · lp.getReferenceData(\'Param Name\', \'Employee_ID\') — same picker, different ID type. Multiple ID types can be tried.\n  · lp.getSequencedValue(\'Sequencer Name\', \'Sequence_ID\') — get next value from cloud:sequence-generator-service.\n  Null check pattern (always apply to getReferenceData): if(val==null||val==\'null\'||val==empty){val=\'\'}\n  Param Name must match the cloud:param name attribute exactly (spaces included).\n- parts[0].xpath(\'...\') — extract value from current message XML using XPath. Namespaces declared on assembly root are available.\n- context.errorMessage / context.getErrorMessage() — error message in send-error handlers.\n- intsys.getAttribute(\'Attr Name\') — reads a text integration attribute from cloud:attribute-map-service.\n- intsys.getAttributeReferenceData(\'Attr Name\', \'ID_Type\') — reads a reference-type integration attribute (cloud:class-report-field attribute).\n- util.currentDateTimeAsString() — current datetime as ISO string.\n- util.currentDateTimeAsString(\'PST\') — with timezone.\n- props[\'assembly.gateway.address\'] — gateway URL. Use .contains(\'impl\') to detect impl vs prod.\n- props[\'cc.customer.id\'] — the Workday tenant name.\n- props.containsKey(\'keyName\') — boolean check for prop existence in cc:eval expressions; use to guard initialization logic. NOTE: use context.containsProperty() instead of props.containsKey() inside cc:parameter default="..." attributes on cc:local-in — context.containsProperty correctly handles null-valued props that props.containsKey still returns true for.\n- context.containsProperty(\'propName\') — null-safe prop check for use inside cc:parameter default expressions. Returns false if the prop was never set OR if it was set to null. Pattern: default="context.containsProperty(\'key\') ? props[\'key\'] : \'fallback\'"\n- vars[\'varName\'] — read a variable by bracket notation.\n- vars[\'varName\'].getText() — get string content of a variable (e.g. base64-encoded value).\n- vars.isVariable(\'name\') — boolean; check existence before reading to avoid null dereference.\n- vars.setVariable(\'name\', value, \'text/plain\') — create/update a variable with explicit MIME type (three-argument form).\n\nINTEGRATION MAP LOOKUPS (cloud:attribute-map-service with cloud:map entries):\n- intsys.integrationMapLookup(\'Map Name\', externalValue) — forward lookup: external → Workday internal value.\n- intsys.integrationMapReverseLookup(\'Map Name\', internalValue) — reverse lookup: internal → external.\n- intsys.getAttributeAsBoolean(\'Attr Name\') — reads a boolean integration attribute (not string).\n\nDATE ARITHMETIC (Java Calendar — canonical pattern for all date math in Studio MVEL):\n```\nprops[\'hire_date_parsed\'] = new java.text.SimpleDateFormat("yyyy-MM-dd").parse(props[\'Hire_Date\'])\nprops[\'cal\'] = java.util.Calendar.getInstance()   // static factory, no "new"\nprops[\'cal\'].setTime(props[\'hire_date_parsed\'])\nprops[\'cal\'].add(java.util.Calendar.DATE, -1)    // subtract 1 day\nprops[\'contract_end\'] = new java.text.SimpleDateFormat("yyyy-MM-dd").format(props[\'cal\'].getTime())\n```\nAlso: `Math.round(props[\'Salary\'] * 12)` for numeric rounding.\n\nCONTEXT METHODS:\n- context.isError() — boolean; use in execute-when on cc:local-out to fire sub-flows only on error or only on success.\n- context.errorCode — the error code string (not just the message).\n\nMVEL TERNARY: props[\'x\'] = (condition) ? \'valueIfTrue\' : \'valueIfFalse\'\nMVEL COMMENTS: lines starting with // are ignored at runtime.\nexecute-when ATTRIBUTE: add execute-when="MVEL_EXPRESSION" on any step inside cc:steps to conditionally skip it at runtime. Also valid on cc:local-out and cc:workday-out-soap elements (not just cc:steps children).\n\nMVEL 1.3.13 GOTCHA — props[\'map\'].methodCall(complexExpr) FAILS inside if/else blocks (confirmed INT144 Audit, April 2026):\nMVEL 1.3.13 cannot compile a method call on a map-accessed object when the argument is a complex expression AND the call is inside an if/else block. Manifests at deploy time as:\n  org.mvel.ParseException: unknown class: props[\'csv.builder\'].append(props[\'A\'] + \',\' + props[\'B\'])\n\nThree variants — only one fails:\n  ✓ props[\'map\'].methodCall(localVar) inside if/else — MVEL resolves localVar type fine\n  ✓ props[\'map\'].methodCall(complexExpr) at TOP level of cc:expression — works\n  ✗ props[\'map\'].methodCall(complexExpr) INSIDE an if/else block — fails to compile\n\nFIX: Replace the if/else with sequential cc:expression elements using ternary at top level. Pre-compute the variable parts into simple props, then call .method() at top level with simple concatenation.\n\nBAD:\n  <cc:expression>\n    if (condition) {\n      props[\'csv.builder\'].append(props[\'A\'] + \',\' + props[\'B\'] + \',label1\\n\')\n    } else {\n      props[\'csv.builder\'].append(props[\'A\'] + \',\' + props[\'B\'] + \',label2\\n\')\n    }\n  </cc:expression>\n\nGOOD — sequential expressions, ternary for branching, .append() at top level:\n  <cc:expression>props[\'_label\'] = condition ? \'label1\' : \'label2\'</cc:expression>\n  <cc:expression>props[\'csv.builder\'].append(props[\'A\'] + \',\' + props[\'B\'] + \',\' + props[\'_label\'] + \'\\n\')</cc:expression>\n\nKey insight: pre-compute branch results into simple props, then the method call becomes top-level with a simple concatenation argument.',
     routes_via: 'none (inline step)',
     xml_example: `<!-- Capture launch params into props (before cc:xslt-plus) -->
 <cc:eval id="CaptureParams">
@@ -728,7 +870,7 @@ Without this, some props set by the caller may be cleared before the sub-flow ru
   rowName="Worker"/>`,
   },
   'xml-stream-splitter': {
-    description: 'Streaming splitter for large XML documents — processes records one at a time without loading the entire document into memory. Critical for large Workday reports (thousands of rows). Used as the strategy child inside cc:splitter, alongside a cc:sub-route pointing to the step that processes each record.\n\nKEY DIFFERENCE FROM cc:xpath-splitter: cc:xpath-splitter loads the full document into memory and OOMs on large reports. cc:xml-stream-splitter streams records — prefer it for any report with > a few hundred rows. It is used in 8 of 12 production integrations at Lyft.\n\nPattern: cc:splitter (container) → cc:sub-route (per-record route) + cc:xml-stream-splitter (streaming strategy). The sub-route chains into per-record async processing. Use cc:aggregator downstream to recombine results.\n\nno-split-message-error="true" throws an error if the document has zero matching records.',
+    description: 'Streaming splitter for large XML documents — processes records one at a time without loading the entire document into memory. Critical for large Workday reports (thousands of rows). Used as the strategy child inside cc:splitter, alongside a cc:sub-route pointing to the step that processes each record.\n\nKEY DIFFERENCE FROM cc:xpath-splitter: cc:xpath-splitter loads the full document into memory and OOMs on large reports. cc:xml-stream-splitter streams records — prefer it for any report with > a few hundred rows. It is the dominant pattern across production integrations.\n\nPattern: cc:splitter (container) → cc:sub-route (per-record route) + cc:xml-stream-splitter (streaming strategy). The sub-route chains into per-record async processing. Use cc:aggregator downstream to recombine results.\n\nno-split-message-error="true" throws an error if the document has zero matching records.',
     routes_via: 'sub-route routes-to (per record); parent cc:splitter routes-to (after all records complete)',
     xml_example: `<!-- cc:splitter is the container — cc:xml-stream-splitter is the strategy inside it. -->
 
@@ -1169,13 +1311,13 @@ Please contact HR Ops.&lt;br&gt;</cc:text>
 <!-- Then embed vars['filebase64'].getText() in a wd:Put_Worker_Document SOAP body -->`,
   },
   'email-out': {
-    description: 'Sends the current message body as an email via SMTP. The message body must already be set (typically by a preceding cc:write with output-mimetype="text/html" or "text/plain"). Used for error notification emails to business users (recruiters, HR ops) when processing fails.\n\nKEY ATTRIBUTES:\n- endpoint — "mailto:{recipient}" URI. Supports @{} interpolation.\n- subject — email subject line. Supports @{} interpolation.\n- host — SMTP host (Lyft uses AWS SES: email-smtp.us-east-1.amazonaws.com)\n- port — SMTP port (587 for STARTTLS)\n- starttls — "true" for STARTTLS\n- user / password — SMTP credentials (typically stored in integration attributes)\n- from, reply-to — sender headers\n- bcc, cc — additional recipients (semicolon-delimited)\n- execute-when — MVEL condition to skip on impl environments\n\nENVIRONMENT ROUTING PATTERN: Use two cc:email-out elements with mutually exclusive execute-when conditions:\n- Prod instance: sends to actual recruiter, execute-when="props[\'Is_Impl\'] == false"\n- Impl instance: sends only to internal test address, execute-when="props[\'Is_Impl\'] == true"\n\nRequires a cc:custom-headers child (empty element).',
+    description: 'Sends the current message body as an email via SMTP. The message body must already be set (typically by a preceding cc:write with output-mimetype="text/html" or "text/plain"). Used for error notification emails to business users (recruiters, HR ops) when processing fails.\n\nKEY ATTRIBUTES:\n- endpoint — "mailto:{recipient}" URI. Supports @{} interpolation.\n- subject — email subject line. Supports @{} interpolation.\n- host — SMTP host (e.g. AWS SES: email-smtp.us-east-1.amazonaws.com)\n- port — SMTP port (587 for STARTTLS)\n- starttls — "true" for STARTTLS\n- user / password — SMTP credentials (typically stored in integration attributes)\n- from, reply-to — sender headers\n- bcc, cc — additional recipients (semicolon-delimited)\n- execute-when — MVEL condition to skip on impl environments\n\nENVIRONMENT ROUTING PATTERN: Use two cc:email-out elements with mutually exclusive execute-when conditions:\n- Prod instance: sends to actual recruiter, execute-when="props[\'Is_Impl\'] == false"\n- Impl instance: sends only to internal test address, execute-when="props[\'Is_Impl\'] == true"\n\nRequires a cc:custom-headers child (empty element).',
     routes_via: 'routes-response-to (optional)',
-    xml_example: `<!-- ── Full error notification pattern (INT012 Greenhouse) ──────────────
+    xml_example: `<!-- ── Full error notification pattern (prod/impl split) ──────────────
   Step 1: build HTML body -->
 <cc:write id="BuildErrorEmail" output-mimetype="text/html">
   <cc:message>
-    <cc:text>Hello @{props['GH_Recruiter_Name']},&lt;br&gt;&lt;br&gt;
+    <cc:text>Hello @{props['Recruiter_Name']},&lt;br&gt;&lt;br&gt;
 Failed processing hire for &lt;b&gt;@{props['First_Name']} @{props['Last_Name']}&lt;/b&gt;.&lt;br&gt;
 Reason: @{props['Email_Failure_Reason']}&lt;br&gt;&lt;br&gt;
 Contact HR Ops to resolve.&lt;br&gt;</cc:text>
@@ -1186,11 +1328,11 @@ Contact HR Ops to resolve.&lt;br&gt;</cc:text>
 <cc:email-out id="EmailOut_Prod"
   execute-when="props['Is_Impl'] == false"
   routes-response-to="EmailOut_Impl"
-  endpoint="mailto:@{props['GH_Recruiter_Email']}"
-  bcc="hropsint@lyft.com"
+  endpoint="mailto:@{props['Recruiter_Email']}"
+  bcc="hr-ops@example.com"
   cc="@{props['cc_address']}"
-  from="prehire@lyft.com"
-  reply-to="prehire@lyft.com"
+  from="hr-system@example.com"
+  reply-to="hr-system@example.com"
   host="email-smtp.us-east-1.amazonaws.com"
   port="587"
   starttls="true"
@@ -1203,8 +1345,8 @@ Contact HR Ops to resolve.&lt;br&gt;</cc:text>
 <!-- Step 3: send to internal test only (impl only) -->
 <cc:email-out id="EmailOut_Impl"
   execute-when="props['Is_Impl'] == true"
-  endpoint="mailto:int-dev-testing@lyft.com"
-  from="prehire@lyft.com"
+  endpoint="mailto:int-dev-testing@example.com"
+  from="hr-system@example.com"
   host="email-smtp.us-east-1.amazonaws.com"
   port="587"
   starttls="true"
@@ -1213,6 +1355,178 @@ Contact HR Ops to resolve.&lt;br&gt;</cc:text>
   subject="[IMPL] Hire failed: @{props['First_Name']} @{props['Last_Name']}">
   <cc:custom-headers/>
 </cc:email-out>`,
+  },
+  'set': {
+    description: 'cc:set is a child element of cc:local-out (and vm://wcc/* built-in endpoints). It passes named parameters to the target sub-flow or platform endpoint. The caller writes cc:set children; the sub-flow reads the values as props.\n\nSYNTAX: <cc:set name="paramName" value="EXPRESSION"/>\n\nVALUE EXPRESSION RULES:\n- String literal: value="\'literalString\'"\n- Prop reference: value="props[\'key\']"\n- MVEL expression: value="props[\'a\'] + \' \' + props[\'b\']" — use + for arithmetic/string concat in MVEL values\n- Message body: value="message" — passes the current message body as the param\n- Boolean: value="true" or value="false" (no quotes)\n\nSTRING CONCATENATION WITH # OPERATOR (confirmed INT_Studio_StarterKit assembly.xml):\nInside assembly.xml attribute values (NOT cc:eval MVEL expressions), the # character is the string concatenation operator. This appears in cc:set value, cc:description, and other attribute strings where a literal + would be ambiguous.\n  value="props[\'inWebServiceApplication\'] #\' application HTTP request error\'"\nvs cc:eval MVEL (uses +):\n  props[\'msg\'] = props[\'app\'] + \' error\'  // same result, different context\n\nKEY PLATFORM PARAMS for vm://wcc/PutIntegrationMessage:\n- is.document.file.name — filename of the deliverable\n- is.document.deliverable — "true" or "false"\n- is.document.variable.name — name of a variable previously set with cc:store\n- is.message.severity — "INFO", "WARNING", "ERROR", "CRITICAL"\n- is.message.summary — short summary line shown on the integration event\n- is.message.detail — longer detail text\n- ie.event.wid — integration event WID (for vm://wcc/GetEventDocuments)',
+    routes_via: 'none (child element of cc:local-out)',
+    xml_example: `<!-- ── cc:set children on cc:local-out (all value forms) ─────────────────
+
+String literal (single quotes required inside double-quoted attribute): -->
+<cc:local-out id="DeliverFile" store-message="none"
+  endpoint="vm://wcc/PutIntegrationMessage">
+  <cc:set name="is.document.file.name"     value="'workers.csv'"/>
+  <cc:set name="is.document.deliverable"   value="'true'"/>
+  <cc:set name="is.message.severity"       value="'INFO'"/>
+  <cc:set name="is.message.summary"        value="'Worker file delivered successfully'"/>
+</cc:local-out>
+
+<!-- Prop reference: -->
+<cc:local-out id="CallSub" store-message="none"
+  endpoint="vm://INT_SSK/MySub">
+  <cc:set name="workerName" value="props['Full_Name']"/>
+  <cc:set name="apiVersion" value="props['globalApiVersion']"/>
+</cc:local-out>
+
+<!-- # string concatenation operator in assembly.xml attribute values
+     (confirmed INT_Studio_StarterKit assembly.xml line 834):
+     value is evaluated as a template expression where # is the concat operator. -->
+<cc:local-out id="DeliverError" store-message="none"
+  endpoint="vm://wcc/PutIntegrationMessage">
+  <cc:set name="is.message.summary"
+    value="props['inWebServiceApplication'] #' application HTTP request error'"/>
+  <!-- Result: e.g. "Dayforce application HTTP request error" -->
+</cc:local-out>
+
+<!-- Message body as param value: -->
+<cc:local-out id="PassMessage" store-message="none"
+  endpoint="vm://INT_SSK/ProcessXml">
+  <cc:set name="soapRequestXml" value="message"/>
+</cc:local-out>
+
+<!-- MVEL expression (same + operator as cc:eval): -->
+<cc:local-out id="BuildPath" store-message="none"
+  endpoint="vm://INT_SSK/CallRest">
+  <cc:set name="apiPath"
+    value="props['apiBase'] + '/v1/workers/' + props['workerId']"/>
+</cc:local-out>`,
+  },
+  'ssk-component-pattern': {
+    description: 'The INT_Studio_StarterKit (SSK) provides a library of reusable sub-flow components — CallSoap, CallRaaS, CallSoapPaged, PopulateJavaMap, and 15+ others. This entry documents the canonical calling convention.\n\nSSK CALLING CONVENTION:\n1. Set up component inputs via cc:set children on cc:local-out\n2. Call the component via vm://{integrationSystemName}/{ComponentId}\n3. Wait for response via routes-response-to\n4. Call Finally_{ComponentId} unconditionally afterward for cleanup\n5. Read cc:out-parameter values from props after response returns\n\nKEY SSK COMPONENTS:\n- CallSoap — single Workday SOAP call. Inputs: soapRequestXml, globalApiVersion, sskIsDebugMode. Outputs: soapResponseXml, callStatus.\n- CallRaaS — RAAS report fetch (workday-out-rest wrapper). Inputs: raasExtraPath, sskIsDebugMode. Outputs: raasResponseXml.\n- CallSoapPaged — paginated SOAP call for large result sets. Inputs: soapRequestXml, pageSize, globalApiVersion. Outputs: soapResponseXml (accumulated).\n- PopulateJavaMap — builds a java.util.HashMap for O(1) lookups. Inputs: keyXpath, valueXpath, dataXml. Outputs: javaMap (in-memory map object).\n\nFINALLY PATTERN: every SSK component has a matching Finally_{ComponentId} sub-flow. Call it unconditionally after the component finishes (both on success AND on error paths). The Finally sub-flow resets component-scoped props, logs completion status, and signals the parent flow.\n\nFRAMEWORK GLOBALS (set once at assembly entry, read everywhere):\n- props[\'sskIsDebugMode\'] — enable verbose CloudLog debug entries in every component\n- props[\'globalApiVersion\'] — Workday API version (e.g. "43.0") passed to all SOAP/REST calls\n- props[\'cc.customer.id\'] — tenant name (set by Studio, read-only)',
+    routes_via: 'routes-response-to (on the calling cc:local-out)',
+    xml_example: `<!-- ── Calling a SSK component: full pattern ─────────────────────────────
+
+Step 1: set framework globals (once, at assembly entry) -->
+<cc:async-mediation id="InitFramework" routes-to="CallSoapComponent">
+  <cc:steps>
+    <cc:eval id="SetGlobals">
+      <cc:expression>props['sskIsDebugMode']   = intsys.getAttributeAsBoolean('SSK Debug Mode')</cc:expression>
+      <cc:expression>props['globalApiVersion'] = intsys.getAttribute('API Version')</cc:expression>
+    </cc:eval>
+  </cc:steps>
+</cc:async-mediation>
+
+<!-- Step 2: build the SOAP envelope using cc:xslt, store as message -->
+<cc:async-mediation id="BuildSoapEnv" routes-to="CallGetWorkers">
+  <cc:steps>
+    <cc:xslt id="BuildEnvelope" url="GetWorkers_Request.xsl"/>
+  </cc:steps>
+  <cc:send-error id="BuildEnvErr" rethrow-error="false" routes-to="PutBuildError"/>
+</cc:async-mediation>
+
+<!-- Step 3: call the SSK CallSoap component -->
+<cc:local-out id="CallGetWorkers" store-message="none"
+  routes-response-to="Finally_CallGetWorkers"
+  endpoint="vm://INT_SSK/CallSoap">
+  <cc:set name="soapRequestXml"    value="message"/>
+  <cc:set name="globalApiVersion"  value="props['globalApiVersion']"/>
+  <cc:set name="sskIsDebugMode"    value="props['sskIsDebugMode']"/>
+</cc:local-out>
+
+<!-- Step 4: call Finally_ unconditionally (cleanup, logging, state reset) -->
+<cc:local-out id="Finally_CallGetWorkers" store-message="none"
+  routes-response-to="ProcessWorkerResponse"
+  endpoint="vm://INT_SSK/Finally_CallSoap"/>
+
+<!-- Step 5: use the output written by the component -->
+<cc:async-mediation id="ProcessWorkerResponse" routes-to="SplitWorkers">
+  <cc:steps>
+    <!-- soapResponseXml was written to props by the CallSoap component -->
+    <cc:eval id="CheckCallStatus">
+      <cc:expression>props['call_ok'] = (props['callStatus'] == 'SUCCESS')</cc:expression>
+    </cc:eval>
+  </cc:steps>
+</cc:async-mediation>
+
+
+<!-- ── PopulateJavaMap component: O(1) lookups ───────────────────────────
+     Builds a HashMap from an XML dataset (e.g. a RAAS lookup report).
+     After component returns, props['javaMap'].get(key) does O(1) lookup. -->
+<cc:local-out id="BuildPayPolicyMap" store-message="none"
+  routes-response-to="Finally_BuildPayPolicyMap"
+  endpoint="vm://INT_SSK/PopulateJavaMap">
+  <cc:set name="keyXpath"   value="'wd:PayPolicy_XRef'"/>
+  <cc:set name="valueXpath" value="'wd:DF_PayPolicy_Code'"/>
+  <cc:set name="dataXml"    value="message"/>
+</cc:local-out>
+<cc:local-out id="Finally_BuildPayPolicyMap" store-message="none"
+  routes-response-to="NextStep"
+  endpoint="vm://INT_SSK/Finally_PopulateJavaMap"/>
+
+<!-- Later in a per-record step: -->
+<cc:eval id="LookupPayPolicy">
+  <cc:expression>props['DF_PayPolicy'] = props['javaMap'].get(props['WD_PayPolicy'])</cc:expression>
+</cc:eval>`,
+  },
+  'decorations': {
+    description: 'Colored text annotation elements in assembly-diagram.xml. Decorations appear as styled text labels (not boxes or shapes) overlaid on a swimlane or element in the Studio canvas. Used in INT_Studio_StarterKit and complex assemblies to annotate what a band/sub-flow does without adding a cc:note (which is schema-invalid in assembly.xml).\n\nNOTE: cc:note is INVALID in assembly.xml (crashes Studio). Decorations in assembly-diagram.xml are the correct way to add visual annotation text.\n\nDECORATION ELEMENT:\n- Must appear inside a <visualProperties> or swimlane block in assembly-diagram.xml\n- Attributes: bgColor (hex), fontColor (hex), type ("NOTE" or similar)\n- Text content is the annotation string displayed in Studio\n\nCONFIRMED FROM INT_Studio_StarterKit assembly-diagram.xml.',
+    routes_via: 'none (assembly-diagram.xml only)',
+    xml_example: `<!-- ── assembly-diagram.xml: colored text decorations ────────────────────
+     Decorations annotate swimlanes or element groups with styled text.
+     Use instead of cc:note (which is schema-invalid in assembly.xml). -->
+
+<!-- Example from INT_Studio_StarterKit: annotation on a sub-flow swimlane -->
+<swimlanes x="30" y="800" name="CallSoap" alignment="START">
+  <elements href="assembly.xml#CallSoap"/>
+
+  <!-- Decoration: styled text label inside this swimlane -->
+  <decorations bgColor="#E3F2FD" fontColor="#0D47A1" type="NOTE">
+    Calls Workday SOAP API. Inputs: soapRequestXml, globalApiVersion.
+    Outputs: soapResponseXml, callStatus. Call Finally_CallSoap after.
+  </decorations>
+</swimlanes>
+
+<!-- Green annotation (success/happy-path band): -->
+<decorations bgColor="#E8F5E9" fontColor="#1B5E20" type="NOTE">
+  Happy path: worker found, hire event processed, CSV delivered.
+</decorations>
+
+<!-- Red annotation (error band): -->
+<decorations bgColor="#FFEBEE" fontColor="#B71C1C" type="NOTE">
+  Error path: HTTP fault or SOAP fault. Delivers error message to event.
+</decorations>
+
+<!-- Yellow annotation (framework globals band): -->
+<decorations bgColor="#FFFDE7" fontColor="#F57F17" type="NOTE">
+  Framework init: sets sskIsDebugMode, globalApiVersion, tenant props.
+</decorations>`,
+  },
+  'custom': {
+    description: 'Calls a custom Java bean as a step inside cc:steps. Use when XSLT/MVEL cannot do the job — typically when you need an Apache HttpClient call (e.g. following a 302 redirect with auth preserved), complex string parsing, or anything that requires actual Java APIs.\n\nWHEN TO USE A JAVA BEAN OVER MVEL:\n- Need a real HTTP library (Studio MVEL cannot Class.forName(\'org.apache.http.*\') — DelegatingClassLoader blocks runtime class loading)\n- Need to follow a redirect with auth preserved (cc:http-basic-auth drops creds on redirect)\n- Need any standard Java class not already imported into MVEL\n- Per-record logic too complex for nested ternaries\n\nTWO PATTERNS — choose based on whether you need props access:\n\nPATTERN A: @Component + cc:custom (when bean needs to read/write props)\n\nJava source (project/src/main/java/...):\n  import com.capeclear.assembly.annotation.Component;\n  import com.capeclear.assembly.annotation.ComponentMethod;\n  import static com.capeclear.assembly.annotation.Component.Type.*;\n\n  @Component(name="MyComponent", type=mediation, scope="prototype",\n             toolTip="...", smallIconPath="icons/x_16.png", largeIconPath="icons/x_24.png")\n  public class MyComponent {\n      @ComponentMethod\n      public void process(com.capeclear.mediation.MediationContext ctx) {\n          String input = ctx.getProperty("my.input.prop").toString();\n          // do work\n          ctx.setProperty("my.output.prop", result);\n      }\n  }\n\nAssembly XML — call inside cc:steps:\n  <cc:custom id="RunMyComponent" ref="MyComponent"/>\n\nSpring bean declaration — OUTSIDE cc:assembly, INSIDE the <beans> root, scope MUST be prototype:\n  <beans ...>\n    <cc:assembly ...> ... </cc:assembly>\n    <bean id="MyComponent" class="com.example.integration.MyComponent" scope="prototype"/>\n  </beans>\n\nPATTERN B: Plain POJO via MVEL bean reference (when no props access needed)\n\nJava (no annotations):\n  public class MyHelper {\n      public String compute(String input) { return input.toUpperCase(); }\n  }\n\nAssembly XML — declare bean:\n  <bean id="myHelper" class="com.example.integration.MyHelper" scope="prototype"/>\n\nMVEL call inside cc:eval — Spring registers bean by id as a direct MVEL variable:\n  props[\'result\'] = myHelper.compute(props[\'someInput\']);\n\nWHY THIS WORKS — DelegatingClassLoader bypass:\nMVEL\'s DelegatingClassLoader blocks Class.forName at runtime, so you cannot instantiate new Apache HttpClient instances inside cc:eval. BUT Spring beans are instantiated by the Studio CONTAINER classloader at startup. MVEL can then call methods on the already-alive bean object without any runtime class loading. This sidesteps the restriction entirely.\n\nCRITICAL — Studio runtime HttpClient version (Studio 2025.24):\nThe Studio runtime ships Apache HttpClient 4.2.3, NOT the modern 4.5+ API. If your bean does HTTP, you MUST use the 4.2.x API:\n  - DefaultHttpClient (NOT CloseableHttpClient)\n  - httpClient.getConnectionManager().shutdown() (NOT client.close())\n  - LaxRedirectStrategy\n\nAdd these three JARs to .classpath (exact paths confirmed on macOS):\n  /Applications/WorkdayStudio/Eclipse.app/Contents/Eclipse/plugins/com.workday.wtp.cloud.runtime.a_2025.24.132/lib/httpclient-4.2.3.jar\n  /Applications/WorkdayStudio/Eclipse.app/Contents/Eclipse/plugins/com.workday.wtp.cloud.runtime.a_2025.24.132/lib/httpcore-4.2.2.jar\n  /Applications/WorkdayStudio/Eclipse.app/Contents/Eclipse/plugins/com.workday.wtp.cloud.runtime.a_2025.24.132/lib/commons-logging-1.1.1.jar\n\nUsing CloseableHttpClient or HttpClients.custom() will compile in your IDE but fail at deploy time with NoSuchMethodError.\n\nPROJECT STRUCTURE for Java beans:\n  project/\n    src/main/java/com/example/integration/MyBean.java   ← source\n    build/classes/                                     ← Eclipse output (auto-compiled)\n    ws/WSAR-INF/assembly.xml\n    .classpath     ← includes src/main/java + the 3 HttpClient JARs above\n    .project       ← includes org.eclipse.jdt.core.javabuilder\n\nCANONICAL USE CASE (DayforceUrlResolverComponent): train.dayforcehcm.com returns HTTP 302 redirect to cantrain261.dayforcehcm.com. Studio cc:http-basic-auth drops credentials on redirect → 401. The bean runs once at integration init, follows the redirect with preemptive auth (LaxRedirectStrategy + manual Authorization header), captures the final hostname, and stores it as the resolved base URL. Subsequent per-record cc:http-out calls hit the resolved URL directly — no redirect, auth works.\n\nThree traps that wasted debugging sessions on the Dayforce probe:\n1. HEAD requests don\'t trigger the 302 — Dayforce only redirects GET. Use HttpGet.\n2. Unauthenticated GET also doesn\'t redirect — must include Authorization: Basic on the probe.\n3. Base URL alone returns HTTP 400 with no redirect — only real endpoints (e.g. /Employees) trigger the 302. Probe URL must be baseUrl + a real endpoint path.',
+    routes_via: 'parent steps continuation',
+    xml_example: `<!-- Pattern A: @Component bean called as a step -->
+<cc:async-mediation id="DoResolveUrl" routes-to="EndResolveUrl">
+  <cc:steps>
+    <cc:custom id="ResolveUrl" ref="DayforceUrlResolver"/>
+  </cc:steps>
+</cc:async-mediation>
+
+<!-- Spring bean declaration — outside cc:assembly, inside the <beans> root -->
+<bean id="DayforceUrlResolver"
+      class="com.example.integration.DayforceUrlResolverComponent"
+      scope="prototype"/>
+
+<!-- Pattern B: Plain POJO called via MVEL — no cc:custom step needed -->
+<bean id="dateHelper"
+      class="com.example.integration.DateHelper"
+      scope="prototype"/>
+
+<cc:async-mediation id="DoFormatDate" routes-to="Continue">
+  <cc:steps>
+    <cc:eval id="FormatHireDate">
+      <cc:expression>props['hire.formatted'] = dateHelper.toIso(props['hire.date'])</cc:expression>
+    </cc:eval>
+  </cc:steps>
+</cc:async-mediation>`,
   },
   'json-splitter': {
     description: 'Splits a raw JSON message on a JSONPath expression without first converting it to XML. Each matched element becomes a separate message routed through the sub-route. Use when you want to iterate over a JSON array returned directly from an API, before or instead of cc:json-to-xml.\n\nUsed as the split strategy child inside cc:splitter, alongside cc:sub-route.\n\nKEY ATTRIBUTE:\n- json-path — JSONPath expression selecting the array to split on. E.g. "$.attachments" selects the top-level "attachments" array.\n\nCONTRAST WITH cc:xml-stream-splitter / cc:xpath-splitter:\n- cc:json-splitter — works on raw JSON, no prior conversion needed\n- cc:xml-stream-splitter — streaming XML split (large docs)\n- cc:xpath-splitter — in-memory XML split (small docs; often used after cc:json-to-xml)\n\nTypical pipeline: http-out GET → json-splitter($.arrayField) → per-record async-mediation → json-to-xml → eval (extract fields) → downstream processing',

@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { readFile, writeFile, copyFile } from 'fs/promises';
+import { readFile, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { XMLParser } from 'fast-xml-parser';
 import { config } from '../config.mjs';
-import { validateAssembly } from '../assembly-validator.mjs';
+import { validateAssembly, checkDiagramDrift } from '../assembly-validator.mjs';
+import { backupFile } from '../fs.mjs';
 
 // ─── Public tool registration ─────────────────────────────────────────────────
 
@@ -80,14 +81,34 @@ export function register(server) {
         );
       }
 
-      await copyFile(assemblyPath, assemblyPath + '.bak');
+      const backupPath = await backupFile(assemblyPath);
       await writeFile(assemblyPath, result.xml, 'utf-8');
 
-      // Run Studio-specific validation automatically — surface issues immediately
+      // Studio-specific validation
       const wsDir = join(projectPath, 'ws', 'WSAR-INF');
       const issues = validateAssembly(result.xml, wsDir);
       const errors   = issues.filter(i => i.severity === 'ERROR');
       const warnings = issues.filter(i => i.severity === 'WARNING');
+
+      // Diagram drift detection
+      const diagramPath = join(wsDir, 'assembly-diagram.xml');
+      let diagramDrift = null;
+      if (existsSync(diagramPath)) {
+        const diagramXml = await readFile(diagramPath, 'utf8').catch(() => null);
+        if (diagramXml) {
+          const drifted = checkDiagramDrift(result.xml, diagramXml);
+          if (drifted.length > 0) {
+            diagramDrift = {
+              warning: `${drifted.length} element(s) in assembly.xml have no matching entry in assembly-diagram.xml.`,
+              missing_from_diagram: drifted.map(d => `${d.tag} id="${d.id}"`),
+            };
+          }
+        }
+      }
+
+      const backup = backupPath
+        ? 'ws/WSAR-INF/' + backupPath.split('/WSAR-INF/').pop()
+        : null;
 
       return {
         content: [{
@@ -95,16 +116,19 @@ export function register(server) {
           text: JSON.stringify({
             success: true,
             updated: `Do${sub_flow_id}`,
-            backup: 'ws/WSAR-INF/assembly.xml.bak',
+            backup,
             validation: {
               clean: issues.length === 0,
               errors:   errors.length,
               warnings: warnings.length,
               issues: issues.length > 0 ? issues : undefined,
             },
+            ...(diagramDrift ? { diagram_drift: diagramDrift } : {}),
             next_step: errors.length > 0
               ? 'Fix the ERRORs above before opening in Studio.'
-              : 'Open assembly-diagram.xml in Studio to verify the diagram renders correctly.',
+              : diagramDrift
+                ? 'Assembly valid. Update assembly-diagram.xml to add missing diagram entries before opening in Studio.'
+                : 'Open assembly-diagram.xml in Studio to verify the diagram renders correctly.',
           }, null, 2),
         }],
       };

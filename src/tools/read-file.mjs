@@ -8,7 +8,7 @@ export function register(server) {
     'read_integration_file',
     'Read the content of a specific file in a Studio project. Use list_project_files first to find the correct path.',
     {
-      project_name: z.string().describe('The Studio project name (e.g. INT002_Lyft_CW_Onboarding)'),
+      project_name: z.string().describe('The Studio project name (e.g. INT001_Sample_Integration)'),
       file_path: z.string().describe('Path to the file relative to the project root (e.g. ws/WSAR-INF/address-transform.xsl)'),
     },
     async ({ project_name, file_path }) => {
