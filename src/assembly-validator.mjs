@@ -231,6 +231,33 @@ function checkTodoStubs(xml, issues) {
   }
 }
 
+// ─── Diagram drift detection ──────────────────────────────────────────────────
+// Returns top-level assembly element ids that have NO reference in the diagram.
+// Only checks renderable node types — cc:send-error, cc:log-error, and inline
+// steps (cc:eval, cc:xslt-plus, etc.) are intentionally excluded because Studio
+// never places them as standalone diagram nodes.
+
+const RENDERABLE_TAGS = new Set([
+  'cc:workday-in', 'cc:local-out', 'cc:local-in', 'cc:async-mediation',
+  'cc:route', 'cc:splitter', 'cc:aggregator', 'cc:http-out',
+  'cc:workday-out-rest', 'cc:workday-out-soap', 'cc:email-out',
+]);
+
+export function checkDiagramDrift(assemblyXml, diagramXml) {
+  const missing = [];
+
+  for (const m of assemblyXml.matchAll(/<(cc:[a-z-]+)\b[^>]*\bid="([^"]+)"/g)) {
+    const [, tag, id] = m;
+    if (!RENDERABLE_TAGS.has(tag)) continue;
+    // Diagram references an id either as href="assembly.xml#Id" or href="#Id"
+    if (!diagramXml.includes(`#${id}`)) {
+      missing.push({ tag, id });
+    }
+  }
+
+  return missing;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function collectIds(xml) {

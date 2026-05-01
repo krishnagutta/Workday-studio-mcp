@@ -3,3 +3,17 @@ config.json
 .env
 *.bak
 .DS_Store
+
+# Local-only extensions — tenant-aware tools live here on the user's machine.
+# These files connect to a specific Workday tenant via SOAP and are NOT part
+# of the public distribution. See docs/local-extensions.md for the pattern if
+# you want to wire up your own tenant-aware tools locally.
+src/local-extensions.mjs
+src/workday-soap.mjs
+src/tools/launch-integration-event.mjs
+src/tools/watch-integration-event.mjs
+src/tools/fetch-server-log.mjs
+
+# Local credential store (never commit)
+.studio-mcp/
+credentials.json
