@@ -156,6 +156,48 @@ Two confirmed values for `cloud:display-option`:
 </cloud:attribute>
 ```
 
+### XML position does NOT define execution order
+
+Element order in `assembly.xml` has no effect on execution. Only the explicit `routes-to` / `routes-response-to` chain determines what runs next.
+
+When inserting a new step before an existing one in a flow, you MUST update the predecessor's `routes-to` to point at the new step. A step that nothing routes to is unreachable dead code — Studio will not warn you.
+
+After any insertion, trace the full routing chain from the entry `local-in` to the exit and verify every `routes-to` points to the intended next step.
+
+```xml
+<!-- WRONG: mediator still routes to OldStep; NewStep is dead code despite being above it -->
+<cc:sync-mediation id="EntryLog" routes-to="OldStep" .../>
+<cc:local-out id="NewStep" execute-when="conditionA" .../>  <!-- never reached -->
+<cc:local-out id="OldStep" execute-when="conditionB" .../>
+
+<!-- CORRECT: mediator routes-to updated; NewStep falls through to OldStep when skipped -->
+<cc:sync-mediation id="EntryLog" routes-to="NewStep" .../>
+<cc:local-out id="NewStep" execute-when="conditionA" routes-response-to="OldStep" .../>
+<cc:local-out id="OldStep" execute-when="conditionB" routes-response-to="FinalDestination" .../>
+```
+
+### Conditional cc:local-out chaining — routes-response-to is the skip fallthrough
+
+When a `cc:sync-mediation` needs to choose between two mutually exclusive `cc:local-out` steps using `execute-when`, chain them sequentially — do NOT have the mediator route directly to the second step.
+
+When a `cc:local-out` is skipped (`execute-when` evaluates to false), Studio fires its `routes-response-to` as a pass-through fallthrough. It does NOT automatically advance to the next sibling.
+
+```xml
+<!-- WRONG: mediator routes to StepB directly; StepA is unreachable dead code -->
+<cc:sync-mediation id="LogStep" routes-to="StepB" .../>
+<cc:local-out id="StepA" execute-when="conditionA" routes-response-to="Destination" .../>
+<cc:local-out id="StepB" execute-when="conditionB" routes-response-to="Destination" .../>
+
+<!-- CORRECT: chain them; skipped StepA falls through to StepB -->
+<cc:sync-mediation id="LogStep" routes-to="StepA" .../>
+<cc:local-out id="StepA" execute-when="conditionA" routes-response-to="StepB" .../>
+<cc:local-out id="StepB" execute-when="conditionB" routes-response-to="Destination" .../>
+```
+
+Both paths converge at `Destination`:
+- Path A (`conditionA` true): StepA executes → sub-flow → returns → StepB skipped via fallthrough → Destination
+- Path B (`conditionB` true): StepA skipped via fallthrough → StepB executes → sub-flow → returns → Destination
+
 ---
 
 ## Diagram Rules
@@ -396,6 +438,59 @@ SubFlow (outer, default horizontal):
 ```
 
 When Studio recalculates `@mixed.N` indices after node moves, let it. Do NOT hand-edit those references — Studio-written connection sources are always correct.
+
+### Add new cc:local-out at the END of assembly to avoid @mixed index cascade
+
+When adding a `cc:local-out` that does not need to appear adjacent to its caller in the XML (error handlers, utility steps), add it at the very end of `assembly.xml` — just before `</cc:assembly>`.
+
+This guarantees zero `@mixed` index shift for all existing diagram connections. The diagram references error handlers and targets by element ID (`assembly.xml#MyErrorHandler`), not by `@mixed` index, so physical XML position does not affect how they are referenced.
+
+```xml
+<!-- Add at the very end — nothing above shifts, no diagram audit needed -->
+<cc:local-out id="MySubFlowError" endpoint="vm://INT999_Name/UMsgH_Do">
+    <cc:set name="UMsgH_Number" value="1"/>
+    <cc:set name="UMsgH_Summary" value="'Error in MySubFlow: describe the specific failure.'"/>
+    <cc:set name="UMsgH_ToWorkday" value="true"/>
+    <cc:set name="UMsgH_Detail" value="context.errorMessage"/>
+</cc:local-out>
+</cc:assembly>
+
+<!-- Diagram connection targets it by ID — @mixed index of any source is unaffected -->
+<connections type="routesTo">
+    <source href="assembly.xml#//@beans/@mixed.1/@mixed.N/@mixed.3"/>
+    <target href="assembly.xml#MySubFlowError"/>
+</connections>
+```
+
+If you add a local-out inline near its caller instead, every element below it shifts by +2, requiring a full diagram audit to update all downstream `@mixed` references.
+
+### Give each sub-flow swimlane its own local error handler
+
+Every sub-flow swimlane containing a `cc:async-mediation` with `handle-downstream-errors="true"` should declare its OWN `cc:local-out` error handler — included in that swimlane's `<elements>` list.
+
+Routing a sub-flow's `cc:send-error` to a global error handler in a distant swimlane produces a long diagonal arrow spanning the entire canvas and uses a generic error message that doesn't describe the specific failure.
+
+```xml
+<!-- async-mediation routes error to its own handler, not a distant global one -->
+<cc:async-mediation id="MySubFlow_Mediation" routes-to="MyRestCall"
+    handle-downstream-errors="true">
+    <cc:send-error id="SendError" routes-to="MySubFlowError"/>
+</cc:async-mediation>
+
+<!-- Error handler added at END of assembly.xml (no @mixed shift) -->
+<cc:local-out id="MySubFlowError" endpoint="vm://INT999_Name/UMsgH_Do">
+    <cc:set name="UMsgH_Summary" value="'Error in MySubFlow: describe the specific failure.'"/>
+</cc:local-out>
+
+<!-- Diagram: error handler is a member of its own sub-flow swimlane -->
+<swimlanes name="My Sub-Flow">
+    <elements href="assembly.xml#MySubFlow_Mediation"/>
+    <elements href="assembly.xml#MyRestCall"/>
+    <elements href="assembly.xml#MySubFlowError"/>
+</swimlanes>
+```
+
+Name error handlers after their sub-flow: `GetWorkersError`, `PostToDayforceError`. This makes the SendError arrow stay entirely within the swimlane and the error message accurately describes what failed.
 
 ---
 
@@ -1042,6 +1137,22 @@ RAAS (Report as a Service) is the dominant pattern for reading bulk data FROM Wo
   <cloud:report-alias description="Location tree" name="INT999_Locations">
     <cloud:report-reference description="Location tree" type="WID">0408aa8e712a0101c0b44d0d3d2a2e9b</cloud:report-reference>
   </cloud:report-alias>
+</cloud:report-service>
+```
+
+**Alias must exist in XML before runtime.** Every string passed to `intsys.reportService.getExtrapath('ALIAS')` must have a matching `cloud:report-alias` entry in the `cloud:report-service` block. Adding the `cc:workday-out-rest` step without the alias declaration causes a runtime "no alias found" failure — Studio does not validate this at build time.
+
+The alias can be declared without a `report-reference` WID (Studio will prompt you to wire it in the Services tab after deploy). But the `<cloud:report-alias name="..."/>` entry MUST exist in the XML:
+
+```xml
+<!-- cc:workday-out-rest referencing a new alias -->
+<cc:workday-out-rest id="MyRaasCall"
+  extra-path="@{intsys.reportService.getExtrapath('MY_REPORT_ALIAS')}?Param=@{props['myParam']}&amp;format=simplexml"/>
+
+<!-- Required BEFORE deploying: matching cloud:report-alias in the workday-in block -->
+<cloud:report-service name="INT999_Reports">
+  <cloud:report-alias description="Human-readable description" name="MY_REPORT_ALIAS"/>
+  <!-- WID report-reference wired via Studio Services tab after XML deploy -->
 </cloud:report-service>
 ```
 

@@ -51,7 +51,8 @@ Both paths converge at the final destination:
 <cc:local-out id="StepB" execute-when="conditionB" routes-response-to="Destination" .../>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-05] RAAS alias must be declared in cloud:report-service before getExtrapath() works
 **Category**: Assembly
@@ -72,7 +73,8 @@ Both paths converge at the final destination:
 </cloud:report-service>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-05] Add standalone cc:local-out at END of assembly to avoid @mixed index cascade
 **Category**: Diagram
@@ -96,7 +98,8 @@ Both paths converge at the final destination:
 </connections>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-05] Give each sub-flow swimlane its own local error handler
 **Category**: Diagram
@@ -123,7 +126,8 @@ Both paths converge at the final destination:
 </swimlanes>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-05] XML position does not define execution order — always update routes-to when inserting a new step
 **Category**: Assembly
@@ -142,4 +146,5 @@ Both paths converge at the final destination:
 <cc:local-out id="OldStep" execute-when="conditionB" routes-response-to="FinalDestination" .../>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
