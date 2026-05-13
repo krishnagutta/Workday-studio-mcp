@@ -407,3 +407,100 @@ If the dialog still appears after step 4, the broken part is cached at the workb
 This shape is the template for any "log error then branch to recovery vs terminal" pattern. Reuse it for: manager-not-found → auto-create manager flow, leave-status-conflict → re-fetch flow, missing-XSL-mapping → fallback default flow, etc.
 **Promote to**: patterns.md
 **Status**: raw
+
+### [2026-05-12] Multiple cc:send-error → single terminal creates diagram spaghetti in direct-chain assemblies
+**Category**: Diagram
+**Trigger**: Every async-mediation had its own cc:send-error routes-to="PutError". Studio drew one crossing arrow per mediation, resulting in 7+ lines converging on PutError — unreadable diagram.
+**Pattern**: In a direct async-mediation chain (no local-in/local-out sub-flows), put handle-downstream-errors="true" and cc:send-error on the FIRST mediation ONLY. That single handler catches errors from all downstream components transitively — every http-out, workday-out-soap, and subsequent async-mediation in the chain. All other mediations need neither handle-downstream-errors nor cc:send-error. Result: one clean arrow to the error terminal.
+**Example**:
+```xml
+<![CDATA[
+<!-- CORRECT: error handler on first mediation only -->
+<cc:async-mediation id="LoadAttrs" routes-to="PrepareAzureToken" handle-downstream-errors="true">
+  <cc:steps>...</cc:steps>
+  <cc:send-error id="LoadAttrsError" rethrow-error="false" routes-to="PutError"/>
+</cc:async-mediation>
+
+<!-- All subsequent mediations: no send-error, no handle-downstream-errors -->
+<cc:async-mediation id="PrepareAzureToken" routes-to="GetAzureTokenHttp">
+  <cc:steps>...</cc:steps>
+</cc:async-mediation>
+
+<cc:http-out id="GetAzureTokenHttp" routes-response-to="ParseAzureToken" .../>
+
+<cc:async-mediation id="ParseAzureToken" routes-to="PrepareGraphRequest">
+  <cc:steps>...</cc:steps>
+</cc:async-mediation>
+
+<!-- WRONG: individual send-error on every mediation -->
+<!-- produces N crossing arrows to the same terminal -->
+]]>
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-05-12] CORRECTION: each cc:async-mediation must have its own cc:send-error — do NOT consolidate to one handler
+**Category**: Assembly
+**Trigger**: Previously logged the opposite: "put handle-downstream-errors on first mediation only." User corrected: each async-mediation needs its own send-error so errors are caught at the right scope with the right context. Consolidating to one handler loses per-step error context and is the wrong pattern.
+**Pattern**: Every cc:async-mediation must have its own cc:send-error child. The multiple arrows converging on PutError in the diagram are normal Studio rendering — not a problem to fix. Do NOT remove individual send-error elements to "clean up" the diagram.
+**Example**:
+```xml
+<![CDATA[
+<!-- CORRECT: each mediation has its own handler -->
+<cc:async-mediation id="PrepareAzureToken" routes-to="GetAzureTokenHttp" handle-downstream-errors="true">
+  <cc:steps>...</cc:steps>
+  <cc:send-error id="PrepareTokenError" rethrow-error="false" routes-to="PutError"/>
+</cc:async-mediation>
+
+<cc:async-mediation id="ParseAzureToken" routes-to="PrepareGraphRequest" handle-downstream-errors="true">
+  <cc:steps>...</cc:steps>
+  <cc:send-error id="ParseTokenError" rethrow-error="false" routes-to="PutError"/>
+</cc:async-mediation>
+]]>
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-05-13] JSON null values become the string "null" in Studio XPath results
+**Category**: MVEL
+**Trigger**: prop set from XPath on a null JSON field printed as "null" in logs, and MVEL condition `== null` evaluated false — the value was the string "null" not Java null
+**Pattern**: When Workday Studio converts a JSON payload to XML, null JSON values (e.g. `"value": null`) become the text node `null` in the XML element. XPath on that element returns the string "null", not Java null. Conditions like `== null`, `== empty`, and `== ''` all evaluate false against the string "null". Always normalize at the extraction point using the 3-line pattern already established in the codebase.
+**Example**:
+```xml
+// Safe 3-line initialization pattern
+props['myProp'] = ''
+props['myProp'] = parts[0].xpath('/path/to/value')
+if (props['myProp'] == 'null') { props['myProp'] = '' }
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-05-13] cc:local-out passthrough chain: skipped steps still fire routes-response-to
+**Category**: Assembly
+**Trigger**: Two sequential conditional cc:local-out steps were both skipped, causing the flow to jump two steps forward silently with no log output — appeared as if an entire sub-flow was never called
+**Pattern**: When a conditional `cc:local-out` is skipped (execute-when evaluates false), Studio still fires its `routes-response-to` as a passthrough. Two skipped steps in sequence produce a silent double passthrough. If both steps in a mutually-exclusive pair are skipped (e.g. due to a value that matches neither condition), the flow jumps ahead with no RAAS call, no SOAP call, and no log output. Add a debug cc:log before the conditional pair logging the raw prop value AND the boolean result of each execute-when expression to diagnose this quickly.
+**Example**:
+```xml
+// Debug log pattern — add before conditional cc:local-out pair
+props['myProp']: @{props['myProp']}
+Condition A (will fire StepA): @{props['myProp'] != ''}
+Condition B (will fire StepB): @{props['myProp'] == ''}
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-05-13] Use string comparison == '' not null/empty checks in cc:local-out execute-when
+**Category**: MVEL
+**Trigger**: execute-when conditions using == null, == empty, != null, != empty behaved inconsistently when prop contained the string "null" vs Java null vs empty string — caused both conditions in a mutually-exclusive pair to evaluate false simultaneously
+**Pattern**: In Workday Studio execute-when and @{} MVEL contexts, null/empty comparisons are unreliable when props may hold the string "null". After normalizing the prop to empty string at extraction (3-line pattern), use only simple string equality for branching: `!= ''` to detect a real value, `== ''` to detect absent/empty. This is unambiguous and works consistently across all MVEL evaluation contexts in Studio.
+**Example**:
+```xml
+// After normalization at source, conditions are simple and reliable:
+// Fires when prop has a real value
+execute-when="props['myProp'] != ''"
+
+// Fires when prop is absent or empty  
+execute-when="props['myProp'] == ''"
+```
+**Promote to**: patterns.md
+**Status**: raw
