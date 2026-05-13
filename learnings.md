@@ -197,7 +197,8 @@ Both paths converge at the final destination:
 </cc:async-mediation>]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-06] POST-then-PATCH upsert recovery: gate via cc:route in send-error path, match on error code substring
 **Category**: Assembly
@@ -243,7 +244,8 @@ Both paths converge at the final destination:
 <cc:local-out id="CallDTA1" store-message="none" endpoint="vm://INT999_<TENANT>/DTA"/>]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-06] Workday PECI event code "-R" suffix means Rescind, NOT Rehire
 **Category**: Other
@@ -267,7 +269,8 @@ Both paths converge at the final destination:
 
 **XSL implication:** HIR-R XSL emits a termination body (status=Inactive, termination reason). TERM-R XSL emits a re-activation body (status=Active, NOT a termination reason). Don't reuse TERM.xsl for TERM-R — the inversion is real.
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-06] @mixed positional XPath refs in assembly-diagram.xml shift by 2N when adding/removing top-level elements
 **Category**: Diagram
@@ -328,7 +331,8 @@ Compare each resolved label against the diagram's stated `<target href>` for tha
 <source href="assembly.xml#//@beans/@mixed.1/@mixed.115/@mixed.3"/>  <!-- now AsyncMediation60 (-14 because also removed AsyncMediation123 later) -->]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-06] Studio's IWorkbenchWindow.getSelectionService() NPE only fixable by full Studio restart
 **Category**: Diagram
@@ -350,7 +354,8 @@ If the dialog still appears after step 4, the broken part is cached at the workb
 - Validate every diagram positional ref BEFORE letting the user open Studio (use the verification Python script — see "@mixed positional XPath refs" learning)
 - Run `xmllint --noout` on both assembly.xml and assembly-diagram.xml after any edit
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-06] Preferred visual layout for cc:route code-gated recovery: three-lane left-to-right
 **Category**: Diagram
@@ -406,7 +411,8 @@ If the dialog still appears after step 4, the broken part is cached at the workb
 
 This shape is the template for any "log error then branch to recovery vs terminal" pattern. Reuse it for: manager-not-found → auto-create manager flow, leave-status-conflict → re-fetch flow, missing-XSL-mapping → fallback default flow, etc.
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-12] Multiple cc:send-error → single terminal creates diagram spaghetti in direct-chain assemblies
 **Category**: Diagram
@@ -437,7 +443,8 @@ This shape is the template for any "log error then branch to recovery vs termina
 ]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-12] CORRECTION: each cc:async-mediation must have its own cc:send-error — do NOT consolidate to one handler
 **Category**: Assembly
@@ -459,7 +466,8 @@ This shape is the template for any "log error then branch to recovery vs termina
 ]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-13] JSON null values become the string "null" in Studio XPath results
 **Category**: MVEL
@@ -473,7 +481,8 @@ props['myProp'] = parts[0].xpath('/path/to/value')
 if (props['myProp'] == 'null') { props['myProp'] = '' }
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-13] cc:local-out passthrough chain: skipped steps still fire routes-response-to
 **Category**: Assembly
@@ -487,7 +496,8 @@ Condition A (will fire StepA): @{props['myProp'] != ''}
 Condition B (will fire StepB): @{props['myProp'] == ''}
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01
 
 ### [2026-05-13] Use string comparison == '' not null/empty checks in cc:local-out execute-when
 **Category**: MVEL
@@ -503,4 +513,5 @@ execute-when="props['myProp'] != ''"
 execute-when="props['myProp'] == ''"
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-05-01

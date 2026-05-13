@@ -198,6 +198,36 @@ Both paths converge at `Destination`:
 - Path A (`conditionA` true): StepA executes → sub-flow → returns → StepB skipped via fallthrough → Destination
 - Path B (`conditionB` true): StepA skipped via fallthrough → StepB executes → sub-flow → returns → Destination
 
+**Silent double passthrough:** if BOTH conditions in a mutually-exclusive pair evaluate false (e.g. due to a prop containing the string `"null"` — see [JSON null](#json-null-values-become-the-string-null--not-java-null)), the flow silently jumps two steps forward with no log output. Add a `cc:log` before the pair logging the raw prop value and each `execute-when` boolean to diagnose this:
+
+```xml
+<!-- Debug log before a conditional local-out pair -->
+<cc:log><cc:log-message><cc:text>
+  myProp=[@{props['myProp']}]
+  condA (fires StepA)=[@{props['myProp'] != ''}]
+  condB (fires StepB)=[@{props['myProp'] == ''}]
+</cc:text></cc:log-message></cc:log>
+```
+
+### Every `cc:async-mediation` needs its own `cc:send-error`
+
+Each `cc:async-mediation` with `handle-downstream-errors="true"` must have its own `cc:send-error` child. Do NOT consolidate multiple mediations onto a single upstream handler — each step needs its error caught at the right scope with the right `context.errorMessage`.
+
+The multiple arrows converging on a shared `PutError` terminal in the diagram are normal Studio rendering — not a problem to fix. Never remove individual `cc:send-error` elements to "clean up" the diagram.
+
+```xml
+<!-- CORRECT: each mediation catches its own errors -->
+<cc:async-mediation id="PrepareToken" routes-to="GetTokenHttp" handle-downstream-errors="true">
+  <cc:steps>...</cc:steps>
+  <cc:send-error id="PrepareTokenError" rethrow-error="false" routes-to="PutError"/>
+</cc:async-mediation>
+
+<cc:async-mediation id="ParseToken" routes-to="PrepareRequest" handle-downstream-errors="true">
+  <cc:steps>...</cc:steps>
+  <cc:send-error id="ParseTokenError" rethrow-error="false" routes-to="PutError"/>
+</cc:async-mediation>
+```
+
 ---
 
 ## Diagram Rules
@@ -233,6 +263,20 @@ Inserting N new top-level elements anywhere inside `cc:assembly` shifts ALL subs
 - Adding N elements increases subsequent indices by `2×N`.
 
 A reference at `@mixed.95` BEFORE a 6-element deletion + 1-comment add becomes `@mixed.95 - 12 + 2 = @mixed.85`.
+
+**Concrete example (INT999 Canada — JobCreation flow removal):**
+
+```xml
+<!-- BEFORE: 6-element JobCreation flow removed + 1 XML comment inserted -->
+<source href="assembly.xml#//@beans/@mixed.1/@mixed.95"/>         <!-- global-error-handler -->
+<source href="assembly.xml#//@beans/@mixed.1/@mixed.129/@mixed.3"/>  <!-- AsyncMediation60 send-error -->
+
+<!-- AFTER: shift = -12 (6 elements) + 2 (1 comment) = -10 for indices ≥ 95 -->
+<source href="assembly.xml#//@beans/@mixed.1/@mixed.85"/>         <!-- global-error-handler -->
+<source href="assembly.xml#//@beans/@mixed.1/@mixed.119/@mixed.3"/>  <!-- AsyncMediation60 send-error -->
+```
+
+If you get this wrong, Studio renders floating unconnected components or edges from the wrong source node (e.g. `AsyncMediation12` appearing disconnected because `@mixed.95` now resolves to it instead of the global-error-handler).
 
 Update the diagram's error connection `<source href>` values and any index-map comment in `assembly-diagram.xml` before opening in Studio.
 
@@ -438,6 +482,49 @@ SubFlow (outer, default horizontal):
 ```
 
 When Studio recalculates `@mixed.N` indices after node moves, let it. Do NOT hand-edit those references — Studio-written connection sources are always correct.
+
+### `cc:route` code-gated recovery — three-lane left-to-right layout
+
+For any "log error then branch to recovery vs terminal" pattern, use three swimlanes left-to-right:
+
+```
+[error-handler lane]       [decision lane]            [terminal lane]
+ AsyncMediation12           HireErrorBranch            CallDTA1 (recovery, top)
+  Log + Eval ──────────▶    cc:route ──────────────▶   CallProcessErrorHire (terminal, below)
+  (logs error,               MVEL Strategy
+   sets can_recover_*)        Recover / LogAndExit
+```
+
+**Layout rules:**
+1. Error-handler async-mediation in its own lane — Log + Eval inline, `routes-to` = decision route.
+2. `cc:route` decision in its own lane — Studio renders Strategy chip and Sub-Routes automatically.
+3. Terminal targets stack vertically in one lane: recovery on top (~100px gap), terminal log below.
+
+**Coordinate convention:** error-handler x ≈ 480, route x ≈ 640, terminals x ≈ 800.
+
+**Reusable XML template:**
+```xml
+<cc:async-mediation id="<ErrorHandler>" routes-to="<DecisionRoute>">
+    <cc:steps>
+        <cc:log .../>
+        <cc:eval>
+            <cc:expression>props['p.error.log'].append(... + 'ERROR,<Step>,' + context.errorMessage.toString() + '\n')</cc:expression>
+            <cc:expression>props['p.error.count'] = props['p.error.count'] + 1</cc:expression>
+            <cc:expression>props['can_recover'] = context.errorMessage.toString().contains('<RecoverableErrorCode>')</cc:expression>
+        </cc:eval>
+    </cc:steps>
+</cc:async-mediation>
+<cc:route id="<DecisionRoute>">
+    <cc:mvel-strategy>
+        <cc:choose-route expression="props['can_recover'] == true" route="Recover"/>
+        <cc:choose-route expression="true" route="LogAndExit"/>
+    </cc:mvel-strategy>
+    <cc:sub-route name="Recover"    routes-to="<RecoveryTarget>"/>
+    <cc:sub-route name="LogAndExit" routes-to="<TerminalLogTarget>"/>
+</cc:route>
+```
+
+Always book-keep the error BEFORE the branch decision — even on recoverable errors, the audit trail should show the failed attempt followed by the recovery success.
 
 ### Add new cc:local-out at the END of assembly to avoid @mixed index cascade
 
@@ -660,6 +747,37 @@ Use inside `async-mediation` with `handle-downstream-errors="true"` and a `cc:se
 ```
 
 Makes Workday SOAP errors catchable as structured faults by `cc:send-error`.
+
+### JSON null values become the string `"null"` — not Java null
+
+When Studio converts a JSON payload to XML via `cc:json-to-xml`, null JSON values (e.g. `"value": null`) become the text node `null` in the XML element. XPath on that element returns the string `"null"`, not Java null.
+
+Conditions like `== null`, `== empty`, and `== ''` all evaluate **false** against the string `"null"`. Always normalize at the extraction point:
+
+```java
+// Safe 3-line extraction pattern — use this any time a JSON field may be null
+props['myProp'] = ''
+props['myProp'] = parts[0].xpath('/path/to/value')
+if (props['myProp'] == 'null') { props['myProp'] = '' }
+```
+
+After normalization, `props['myProp']` is either a real value or `''` — never the string `"null"`.
+
+### Use `== ''` / `!= ''` in `execute-when`, not null/empty checks
+
+After normalizing a prop to empty string at extraction (3-line pattern above), use only simple string equality for branching. `== null`, `!= null`, `== empty`, `!= empty` behave inconsistently when a prop holds the string `"null"` vs Java null vs empty string — two mutually exclusive conditions can both evaluate false simultaneously, causing silent double passthrough.
+
+```xml
+<!-- After normalization: conditions are simple and unambiguous -->
+
+<!-- Fires when prop has a real value -->
+execute-when="props['myProp'] != ''"
+
+<!-- Fires when prop is absent or empty -->
+execute-when="props['myProp'] == ''"
+```
+
+This works consistently across all MVEL evaluation contexts in Studio: `execute-when` attributes, `@{...}` interpolation, and `cc:expression` blocks.
 
 ---
 
@@ -1024,6 +1142,57 @@ Always extract before any transform — after `xslt-plus` or `write`, xpath stop
 </cc:email-out>
 ```
 
+### Proxy-vs-direct API: error handling path shifts entirely
+
+When an integration moves from a proxy that wraps all responses in HTTP 200 (e.g. Boomi) to calling the real API directly, error handling shifts paths entirely. Knowing which path actually ran is essential for debugging.
+
+| | Proxy era | Direct API era |
+|---|---|---|
+| HTTP error response | Proxy returns 200, error JSON in body | Real 4xx status code returned |
+| Where errors land | `routes-response-to` chain fires (proxy never raises exception) | `cc:send-error` fires via `handle-downstream-errors` |
+| Error source | `props['Error_Message']` set by response XSL | `context.errorMessage` (full exception text including response JSON) |
+| `cc:send-error` in proxy era | Dead code — never fires | Active — primary error path |
+
+**How to tell which path ran in logs:**
+- Response chain fired → look for step log messages from your response-handler steps
+- Send-error fired → look for `BadRequestException` from `HttpRetryControl` before your error-handler log
+
+**Porting implication:** any error logic wired into the `routes-response-to` chain becomes dead code when switching to direct API. Recovery logic must move into the `cc:send-error` path and read from `context.errorMessage`, not `props['Error_Message']`.
+
+### POST-then-PATCH upsert recovery via `cc:route` in send-error path
+
+For self-healing "create-or-update" flows: if POST fails with a duplicate-key error code, fall through to PATCH automatically.
+
+**Pattern:**
+1. In the error-handler async-mediation, compute a recovery flag from `context.errorMessage.toString().contains('<ErrorCode>')`. Use the API error **code** (e.g. `HR_Employee_DuplicateXRefCodeFound`), not the message text — codes are stable API contract.
+2. Always book-keep the original error first (append to audit log, increment error count) — even on recovery.
+3. Route the error handler to a `cc:route` decision node with two branches: `Recover` → PATCH target, `LogAndExit` → terminal.
+
+```xml
+<cc:async-mediation id="HireErrorHandler" routes-to="HireErrorBranch">
+    <cc:steps>
+        <cc:eval>
+            <cc:expression>props['p.error.log'].append(props['worker_id'] + ',ERROR,Hire,' + context.errorMessage.toString() + '\n')</cc:expression>
+            <cc:expression>props['p.error.count'] = props['p.error.count'] + 1</cc:expression>
+            <cc:expression>props['can_recover_hire'] =
+                context.errorMessage.toString().contains('HR_Employee_DuplicateXRefCodeFound') ||
+                context.errorMessage.toString().contains('HR_Search_EmployeeXRefCodeAlreadyExists')</cc:expression>
+        </cc:eval>
+    </cc:steps>
+</cc:async-mediation>
+
+<cc:route id="HireErrorBranch">
+    <cc:mvel-strategy>
+        <cc:choose-route expression="props['can_recover_hire'] == true" route="Recover"/>
+        <cc:choose-route expression="true" route="LogAndExit"/>
+    </cc:mvel-strategy>
+    <cc:sub-route name="Recover"    routes-to="CallPatchEmployee"/>
+    <cc:sub-route name="LogAndExit" routes-to="CallProcessErrorHire"/>
+</cc:route>
+```
+
+The recovery PATCH operates on the same in-memory variables the original POST used — no data refresh needed within one Effective_Change scope. The audit log shows the failed POST attempt followed by the PATCH success, which is the expected recovery signature.
+
 ---
 
 ## XSLT Patterns
@@ -1355,7 +1524,14 @@ The dialog reappears on every focus change. Even after fixing `assembly-diagram.
 
 **Cause:** When the editor part fails to initialize (because of the upstream `MatchError`), its `WorkbenchPartSite` ends up half-constructed with a null window reference. Eclipse caches this broken site and continues asking for selection-service from it. There is no Studio API to reset a broken part site at runtime.
 
-**Fix:** Full Studio restart is the only reliable way to clear it. There is no in-Studio recovery path for this specific NPE. Once it appears, save your work and restart.
+**Recovery attempt (works ~70% of the time when corruption is editor-local):**
+1. Close the broken editor tab — click × on the `assembly.xml` tab to dispose the broken `IEditorPart`
+2. **F5** on the project in Project Explorer (right-click → Refresh)
+3. **Project → Clean…** → pick the project → OK
+4. Re-open `assembly.xml` by double-clicking — Studio creates a fresh editor part
+5. **Window → Show View → Error Log** → clear stale errors with the trash-can icon
+
+If the dialog still appears after step 4, the broken part is cached at the workbench level — only a full Studio restart clears it.
 
 **Prevention:** Always commit a known-good state to project-local git before structural assembly edits. Validate every diagram positional ref BEFORE letting Studio open the file.
 
@@ -1504,6 +1680,40 @@ props['cc.customer.id']   // Workday tenant name
 - `access="private"` — internal use only.
 - `use-global-error-handlers="true"` — connects this sub-flow to assembly-level global error handlers.
 - `icon="icons/iconName.png"` — diagram icon.
+
+---
+
+## Workday PECI Event Code Reference
+
+PECI (Payroll Effective Change Integration) drives outbound Workday integrations. Every event has an event code. The `-R` suffix universally means **Rescind** — undo the prior action. It does NOT mean "Rehire".
+
+| Code | Name | Typical action |
+|------|------|----------------|
+| `HIR` | Hire | New employee → POST |
+| `HIR-R` | **Hire Rescinded** | Hire undone (employee never started) → PATCH to Inactive |
+| `TERM` | Termination | Employee leaves → PATCH status=Inactive |
+| `TERM-R` | **Termination Rescinded** | Prior termination undone, employee stays → PATCH status=Active |
+| `DTA` | Data Change | Profile update → PATCH affected fields |
+| `LOA` | Leave of Absence | Start leave |
+| `LOA-C` | LOA Continuation | Leave extends |
+| `LOA-R` | LOA Return | Employee returns from leave |
+| `RFL` | Reflect | Reorg / position effective change rolls forward |
+| `PCI` | Payroll Compensation Initiate | Comp package attached at hire → treat as HIR if `Is_Rehire=='0'`, else as DTA |
+| `PGI` / `PGO` | Pay Group In / Out | Pay group transfer |
+| `PCO` | Payroll Cutoff | Period close action |
+
+**Routing rule:** every PECI integration's `cc:route` block must have an explicit branch for each handled event code plus an `OTHER` fallback. A missing code causes events to fall through to `OTHER` — which typically just logs and exits without calling the target system.
+
+**Rehire is `HIR` with a flag, not a separate event code:**
+```java
+// Inside HIR handler — distinguish first-time hire from rehire
+props['Is_Rehire'] = parts[0].xpath('peci:Worker_Status/peci:Is_Rehire')
+// '1' = rehire, '0' or '' = new hire
+```
+
+**XSL implication for rescind codes:**
+- `HIR-R` XSL emits a termination body (status=Inactive, termination reason) — do NOT reuse `HIR.xsl`
+- `TERM-R` XSL emits a re-activation body (status=Active, no termination reason) — do NOT reuse `TERM.xsl`
 
 ---
 
