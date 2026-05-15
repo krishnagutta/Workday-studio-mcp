@@ -570,3 +570,37 @@ The validate step after assembly edits should be treated as two steps:
 ```
 **Promote to**: validate-assembly.mjs
 **Status**: raw
+
+### [2026-05-15] Inserting a new swimlane shifts all #//@swimlanes.N index refs and breaks the diagram
+**Category**: Diagram
+**Trigger**: Added a new swimlane block between Master and the next swimlane. All downstream swimlane cross-references (href="#//@swimlanes.N") shifted by 1. Studio rendered a spaghetti diagram with all connections going to wrong nodes.
+**Pattern**: Swimlane cross-references in assembly-diagram.xml use zero-based positional indices (#//@swimlanes.0, #//@swimlanes.1, etc.), not IDs. Inserting any new swimlane at any position other than the very end will silently corrupt every reference with a higher index.
+
+Safe rules:
+- NEVER insert a swimlane between existing ones
+- Only append new swimlanes at the end of the swimlanes list
+- When adding new components, put them inside an existing swimlane (Master is safest for startup-flow steps)
+- If a dedicated swimlane is truly needed, append it at the very end of the file
+**Example**:
+```xml
+<![CDATA[
+<!-- WRONG — inserting in the middle shifts all #//@swimlanes.N refs downstream -->
+<swimlanes name="Master"> ... </swimlanes>
+<swimlanes name="New Swimlane">   <!-- inserted here — breaks everything below -->
+  <elements href="assembly.xml#NewStep"/>
+</swimlanes>
+<swimlanes name="Swimlane">      <!-- was index 1, now index 2 — all hrefs broken -->
+  ...
+</swimlanes>
+
+<!-- SAFE — add new components into the existing Master swimlane instead -->
+<swimlanes name="Master">
+  <elements href="assembly.xml#AsyncMediation"/>
+  <elements href="assembly.xml#GetBearerToken_Out"/>   <!-- added here, safe -->
+  <elements href="assembly.xml#FetchTokenMediation"/>
+  <elements href="assembly.xml#CallTestProcess"/>
+</swimlanes>
+]]>
+```
+**Promote to**: patterns.md
+**Status**: raw
