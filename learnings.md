@@ -515,3 +515,58 @@ execute-when="props['myProp'] == ''"
 **Promote to**: patterns.md
 **Status**: promoted
 **Promoted**: 2026-05-01
+
+### [2026-05-15] validate_assembly does not check diagram/assembly sync — diagram must be updated manually after every assembly change
+**Category**: Diagram
+**Trigger**: Added 6 new components and changed AsyncMediation routing in assembly.xml. validate_assembly returned 0 errors. Studio diagram still showed the old AsyncMediation → CallTestProcess arrow and the new components were completely absent from the diagram. User caught this by opening the project in Studio.
+**Pattern**: validate_assembly only validates assembly.xml logic (routes-to targets exist, required attributes present, vm:// local-in refs). It does NOT read assembly-diagram.xml at all. The diagram can be completely stale — wrong connections, missing components, broken swimlanes — and validate_assembly will still report clean.
+
+After ANY assembly.xml edit that adds, removes, or reroutes components, the diagram MUST be updated separately:
+1. New component added → add a <visualProperties> entry for it
+2. routes-to changed on an existing component → update the <connections> source/target
+3. New local-out/local-in pair → add both to diagram + add the routesTo connection
+4. New swimlane grouping needed → add <swimlanes> block with <elements> refs
+5. Error paths (send-error) → add sendError type <connections>
+
+The validate step after assembly edits should be treated as two steps:
+  - validate_assembly (logic check)
+  - Manual diagram review: grep new component IDs in assembly-diagram.xml to confirm they exist
+**Example**:
+```xml
+<![CDATA[
+<!-- assembly.xml — new routing -->
+<cc:async-mediation id="AsyncMediation" routes-to="GetBearerToken_Out">
+
+<!-- assembly-diagram.xml — must update connection from old target to new -->
+<!-- OLD (stale after assembly change): -->
+<connections type="routesTo" ...>
+  <source href="assembly.xml#AsyncMediation"/>
+  <target href="assembly.xml#CallTestProcess"/>  <!-- WRONG after routing change -->
+</connections>
+
+<!-- NEW (correct): -->
+<connections type="routesTo" ...>
+  <source href="assembly.xml#AsyncMediation"/>
+  <target href="assembly.xml#GetBearerToken_Out"/>
+</connections>
+<connections type="routesResponseTo" ...>
+  <source href="assembly.xml#GetBearerToken_Out"/>
+  <target href="assembly.xml#CallTestProcess"/>
+</connections>
+
+<!-- Also must add visualProperties for every new component: -->
+<visualProperties>
+  <element href="assembly.xml#GetBearerToken_Out"/>
+</visualProperties>
+
+<!-- And add to appropriate swimlane: -->
+<swimlanes name="Jira Token Fetch" orientation="VERTICAL">
+  <elements href="assembly.xml#FetchTokenMediation"/>
+  <elements href="assembly.xml#FetchToken"/>
+  <elements href="assembly.xml#ProcessTokenMediation"/>
+  <elements href="assembly.xml#FetchTokenError"/>
+</swimlanes>
+]]>
+```
+**Promote to**: validate-assembly.mjs
+**Status**: raw
