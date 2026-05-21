@@ -604,3 +604,36 @@ Safe rules:
 ```
 **Promote to**: patterns.md
 **Status**: raw
+
+### [2026-05-21] Renaming a step ID in assembly.xml requires the same rename in assembly-diagram.xml
+**Category**: Diagram
+**Trigger**: scala.MatchError on diagram open: eProxyURI referenced assembly.xml#GetDisabledUsersHttp which no longer existed after rename to PostGraphBatch. Studio crashed trying to resolve the stale href.
+**Pattern**: assembly-diagram.xml holds element hrefs like `assembly.xml#SomeStepId`. When any step id is renamed or removed in assembly.xml, every matching href in assembly-diagram.xml must be updated in the same commit. The validate_assembly tool only checks assembly.xml — it does NOT scan assembly-diagram.xml for stale hrefs. Always grep assembly-diagram.xml for the old id after any rename and replace_all before opening Studio.
+**Example**:
+```xml
+<!-- assembly.xml renamed GetDisabledUsersHttp → PostGraphBatch -->
+<!-- assembly-diagram.xml must also change: -->
+<!-- BAD  --> <element href="assembly.xml#GetDisabledUsersHttp"/>
+<!-- GOOD --> <element href="assembly.xml#PostGraphBatch"/>
+```
+**Promote to**: validate-assembly.mjs
+**Status**: raw
+
+### [2026-05-21] cc:message-content has no maxlength attribute
+**Category**: Schema
+**Trigger**: Studio XML validation error: Attribute 'maxlength' is not allowed to appear in element 'cc:message-content'
+**Pattern**: cc:message-content takes no attributes. To truncate log output use MVEL in a cc:text expression instead — e.g. `@{parts[0].text.length() > 2000 ? parts[0].text.substring(0,2000) + '...' : parts[0].text}` inside a cc:log cc:text element.
+**Example**:
+```xml
+<!-- BAD -->
+<cc:message-content maxlength="2000"/>
+
+<!-- GOOD — truncate via cc:text if needed -->
+<cc:log id="LogRaw">
+  <cc:log-message>
+    <cc:text>Response: @{parts[0].text.length() > 2000 ? parts[0].text.substring(0,2000) + '...' : parts[0].text}</cc:text>
+  </cc:log-message>
+</cc:log>
+```
+**Promote to**: get-step-type-reference.mjs
+**Status**: raw
