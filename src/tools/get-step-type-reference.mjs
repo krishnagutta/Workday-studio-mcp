@@ -714,31 +714,53 @@ Without this, some props set by the caller may be cleared before the sub-flow ru
 </cc:eval>`,
   },
   'workday-out-soap': {
-    description: 'Calls a Workday SOAP web service. The current message body must already be a complete SOAP envelope (built by a preceding async-mediation + xslt or xslt-plus step). Specify the Workday application name (e.g. "Human_Resources") and API version (e.g. "v40.0"). The SOAP response becomes the new message and is routed via routes-response-to.\n\nADDITIONAL ATTRIBUTES (confirmed from INT999):\n- replace-with-soap-fault="true" — converts Workday SOAP error responses into actual SOAP Fault messages. This allows cc:send-error to distinguish and catch SOAP-level errors as structured faults rather than generic Studio errors.\n- execute-when="MVEL_EXPR" — on the element itself (not inside cc:steps), conditionally skips the entire outbound call. E.g. execute-when="props[\'Contingent_Worker_ID\'] != \'\'" only fires the SOAP call when a CW ID was found.',
+    description: 'Calls a Workday SOAP web service. The current message body must already be a complete SOAP envelope (built by a preceding async-mediation + xslt or xslt-plus step). Specify the Workday application name and API version. The SOAP response becomes the new message and is routed via routes-response-to.\n\nCURRENT API VERSION: v46.1 (2026R1, updated 2026-05-29). Use the lookup_soap_operations tool to list all operations available for a given service.\n\nVALID application VALUES (all 37 services from WWS v46.1 — source: community.workday.com/sites/default/files/file-hosting/productionapi/index.html):\n\nHCM CORE: Human_Resources, Staffing, Compensation, Talent, Performance_Management, Recruiting, Learning, Flex_Team, Adoption\nPAYROLL: Payroll, Payroll_Interface, Payroll_GBR, Payroll_AUS\nBENEFITS & TIME: Benefits_Administration, Benefits_Partner_Program_Integrations, Absence_Management, Time_Tracking\nFINANCE: Financial_Management, Revenue_Management, Cash_Management, Resource_Management, Inventory, Requests, Settlement_Services, Compensation_Review, Professional_Services_Automation\nACADEMIC (higher ed only): Academic_Foundation, Academic_Advising, Admissions, Student_Core, Student_Records, Student_Finance, Student_Transfer_Credit, Student_Recruiting\nPLATFORM: Integrations, Prism_Analytics, Workday_Connect, ACA_Partner_Integrations\n\nNOTE: "Payroll_Interface" is the correct name for payroll outbound file integrations — NOT "Payroll" (which is for payroll processing). "Benefits_Administration" not "Benefits".\n\nADDITIONAL ATTRIBUTES:\n- replace-with-soap-fault="true" — converts Workday SOAP error responses into SOAP Fault messages catchable by cc:send-error\n- execute-when="MVEL_EXPR" — conditionally skips the outbound call',
     routes_via: 'routes-response-to',
-    xml_example: `<!-- Workday HR Get_Workers SOAP call -->
+    xml_example: `<!-- Human Resources SOAP call (most common — Get_Workers, Hire_Employee, etc.) -->
 <cc:workday-out-soap id="CallGetWorkers"
   routes-response-to="TransformResponse"
   application="Human_Resources"
-  version="v40.0"/>
+  version="v46.1"/>
 
-<!-- Common application values:
-     Staffing, Compensation, Payroll, Benefits,
-     Talent, Time_Tracking, Recruiting, Financial_Management -->
-
-<!-- replace-with-soap-fault: convert SOAP errors to catchable SOAP Faults -->
+<!-- Staffing operations: Hire_Employee, Change_Job, End_Additional_Job, etc. -->
 <cc:workday-out-soap id="HireEmployee"
   routes-response-to="HandleHireResponse"
   application="Staffing"
-  version="v40.0"
+  version="v46.1"
   replace-with-soap-fault="true"/>
 
-<!-- execute-when: skip the call entirely when condition is false -->
+<!-- Payroll Interface — for outbound payroll file integrations -->
+<cc:workday-out-soap id="GetPayResults"
+  routes-response-to="HandlePayResults"
+  application="Payroll_Interface"
+  version="v46.1"/>
+
+<!-- Benefits Administration -->
+<cc:workday-out-soap id="ChangeBenefits"
+  routes-response-to="HandleBenefitsResponse"
+  application="Benefits_Administration"
+  version="v46.1"/>
+
+<!-- execute-when: skip when a condition is false -->
 <cc:workday-out-soap id="ConvertCW"
   execute-when="props['Contingent_Worker_ID'] != ''"
   routes-response-to="HandleConvertResponse"
   application="Staffing"
-  version="v40.0"/>`,
+  version="v46.1"/>
+
+<!-- Full valid application list (WWS v46.1 / 2026R1):
+  HCM:      Human_Resources, Staffing, Compensation, Talent,
+            Performance_Management, Recruiting, Learning, Flex_Team, Adoption
+  Payroll:  Payroll, Payroll_Interface, Payroll_GBR, Payroll_AUS
+  Benefits: Benefits_Administration, Benefits_Partner_Program_Integrations
+  Time:     Absence_Management, Time_Tracking
+  Finance:  Financial_Management, Revenue_Management, Cash_Management,
+            Resource_Management, Inventory, Requests, Settlement_Services,
+            Compensation_Review, Professional_Services_Automation
+  Academic: Academic_Foundation, Academic_Advising, Admissions, Student_Core,
+            Student_Records, Student_Finance, Student_Transfer_Credit, Student_Recruiting
+  Platform: Integrations, Prism_Analytics, Workday_Connect, ACA_Partner_Integrations
+-->`,
   },
   'send-error': {
     description: 'Error handler that processes errors using standard assembly components. Routes to a step (typically a PutIntegrationMessage local-out) for structured error reporting. Use as a global handler on the assembly or a local handler inside a mediation component. Set rethrow-error="true" to pass the error upstream after handling.\n\nBEST PRACTICE — per-handler delivery: give each local send-error its own cc:local-out with a step-specific error message (routes-to="StepNameError"). Use a shared DeliverError only for the GlobalErrorHandler. This allows distinct summaries per failure point.\n\nDIAGRAM RULES — violations crash Studio with scala.MatchError:\n1. NEVER reference cc:send-error by XML id anywhere in the diagram. Always use EMF XPath.\n2. Assembly-level cc:send-error (GlobalErrorHandler): use empty <visualProperties> (no x/y), include in swimlane <elements> via EMF XPath, and add a <connections> entry. No closed="true" needed.\n3. Local cc:send-error inside cc:async-mediation: add ONLY a <connections> entry with EMF XPath source — Studio renders it inside the parent box. Never add to visualProperties or swimlane elements.\n4. EMF XPath (@mixed index) counts ALL child nodes: whitespace text nodes (nodeType=3), element nodes (nodeType=1), AND XML comment nodes (nodeType=8). Use python3 xml.dom.minidom to count precisely.\n5. PREDICTABILITY RULE: if you write assembly.xml with NO XML comments, all element nodes fall on odd indices (1, 3, 5, 7...) because whitespace text nodes fill the even slots. This makes indices trivially calculable without running Python. Adding even one comment breaks this regularity — run the Python counter whenever comments are present.\n6. STUDIO AUTO-CORRECTS @mixed INDICES — DO NOT HAND-EDIT AFTER STUDIO WRITES: When Studio serializes the diagram (after the user moves nodes, adds steps, or reorganizes swimlanes), it recalculates all @mixed.N indices itself. The result is always correct. Do NOT re-run the Python counter or manually update source href values after Studio has touched the file — Studio\'s output supersedes any hand-computed values. (Confirmed INT999: GlobalErrorHandler shifted from @mixed.69 to @mixed.95 after a 12-element insertion; Studio auto-corrected all connection source references when the user reorganized.)\n\nDIAGRAM ERROR PLACEMENT (confirmed INT999 GetManager pattern, April 2026):\n- Do NOT isolate error-branch nodes in a separate "Errors" outer band. Co-locate each error branch adjacent to its decision point inside the same VERTICAL inner band. This eliminates long cross-band arrows and is the pattern Studio itself uses when it auto-generates connections.\n- Nesting 3 levels of VERTICAL bands is acceptable for complex sub-flows (outer band → VERTICAL container → inner band).\n- Error mediations (AsyncMediation_XxxNotFound, AsyncMediation_XxxError) go in the same VERTICAL band as the step that generates them — stacked vertically below the happy-path node.',

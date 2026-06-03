@@ -21,6 +21,7 @@ import { register as registerCopyFileFromProject } from './tools/copy-file-from-
 import { register as registerRenameFile } from './tools/rename-file.mjs';
 import { register as registerDeleteFile } from './tools/delete-file.mjs';
 import { register as registerGetStepTypeReference } from './tools/get-step-type-reference.mjs';
+import { register as registerLookupSoapOperations } from './tools/lookup-soap-operations.mjs';
 import { register as registerPlanIntegration } from './tools/plan-integration.mjs';
 import { register as registerUpdateSubFlow } from './tools/update-sub-flow.mjs';
 import { register as registerValidateAssembly } from './tools/validate-assembly.mjs';
@@ -55,6 +56,7 @@ registerAddAssemblyStep(server);
 
 // Reference
 registerGetStepTypeReference(server);
+registerLookupSoapOperations(server);
 
 // Planning (call this before any assembly XML work)
 registerPlanIntegration(server);
