@@ -123,7 +123,14 @@ export function register(server) {
       project_name: z.string()
         .describe('Existing project name (e.g. "INT145_My_Integration"). Must already exist in the workspace.'),
       sub_flows: z.array(z.object({
-        id: z.string().describe('Identifier for XML ids (no spaces, e.g. "GetWorkers", "PostToTarget")'),
+        id: z.string()
+          .describe([
+            'Sub-flow entry noun — becomes the cc:local-in id and vm:// endpoint name.',
+            'Use PascalCase noun or NounNoun. No spaces, no underscores.',
+            'Examples: LoadAttrs, AzureToken, GraphUsers, WDWorkers, GeneratePayload, LookupEmployee.',
+            'The skeleton generates Call_{id} for the caller and Do{id} for the async-mediation stub.',
+            'Rename Do{id} stubs to Verb+Object (e.g. PrepareAzureToken) using rename_steps before testing.',
+          ].join(' ')),
         description: z.string().describe('One sentence: what this sub-flow produces'),
         reads_props: z.array(z.string()).optional(),
         writes_props: z.array(z.string()).optional(),
@@ -299,7 +306,7 @@ function buildAssemblyXml(projectName, subFlows, designBrief) {
 
 \t<cc:assembly id="WorkdayAssembly" version="2024.37">`);
 
-  const firstTarget = n > 0 ? `Call${subFlows[0].id}` : 'End';
+  const firstTarget = n > 0 ? `Call_${subFlows[0].id}` : 'End';
   const declarations = buildWorkdayInDeclarations(projectName, designBrief);
   const intSysBody = declarations ? `\n${declarations}\n\t\t\t` : '';
 
@@ -309,22 +316,29 @@ function buildAssemblyXml(projectName, subFlows, designBrief) {
 \t\t</cc:workday-in>`);
 
   // Sequential local-out chain
+  // Naming convention: Call_SubFlowName (underscore separator) for cc:local-out callers
   for (let i = 0; i < n; i++) {
     const sf   = subFlows[i];
     const next = subFlows[i + 1];
-    const rrt  = next ? `\n\t\t\troutes-response-to="Call${next.id}"` : '';
+    const rrt  = next ? `\n\t\t\troutes-response-to="Call_${next.id}"` : '';
     lines.push(`
-\t\t<cc:local-out id="Call${sf.id}" store-message="none"${rrt}
+\t\t<cc:local-out id="Call_${sf.id}" store-message="none"${rrt}
 \t\t\tendpoint="vm://${projectName}/${sf.id}"/>`);
   }
 
   // Sub-flow stubs
+  // Naming convention:
+  //   cc:local-in    → SubFlowName (the entry noun, matches vm:// endpoint)
+  //   cc:async-mediation → Do{SubFlowName} as stub; rename to Verb+Object before testing
+  //                        e.g. DoLoadAttrs → InitBatch, DoAzureToken → PrepareAzureToken
+  //   cc:send-error  → SubFlowName+Error (describes the failure context)
+  //   cc:local-out error → Put{SubFlowName}Error (error delivery step)
   for (const sf of subFlows) {
     lines.push(`
 \t\t<cc:local-in id="${sf.id}" routes-to="Do${sf.id}"/>
 \t\t<cc:async-mediation id="Do${sf.id}" handle-downstream-errors="true">
 \t\t\t<cc:steps>
-\t\t\t\t<cc:log id="TODO_${sf.id}">
+\t\t\t\t<cc:log id="Log${sf.id}Start">
 \t\t\t\t\t<cc:log-message><cc:text>TODO: ${sf.description}</cc:text></cc:log-message>
 \t\t\t\t</cc:log>
 \t\t\t</cc:steps>
@@ -394,7 +408,7 @@ function buildDiagramXml(projectName, subFlows) {
   <element href="assembly.xml#WorkdayAssembly"/>`);
 
   lines.push(vp(60, 200, 'StartHere'));
-  for (let i = 0; i < n; i++) lines.push(vp(320 + i * 150, 200, `Call${subFlows[i].id}`));
+  for (let i = 0; i < n; i++) lines.push(vp(320 + i * 150, 200, `Call_${subFlows[i].id}`));
 
   lines.push(`  <visualProperties>\n    <element href="${globalErrorPath(n)}"/>\n  </visualProperties>`);
   lines.push(vp(450, 65, 'DeliverError'));
@@ -406,22 +420,22 @@ function buildDiagramXml(projectName, subFlows) {
     lines.push(vp(170, yBase + 55, `Put${subFlows[i].id}Error`));
   }
 
-  lines.push(conn('routesTo', 'StartHere', `Call${subFlows[0].id}`));
+  lines.push(conn('routesTo', 'StartHere', `Call_${subFlows[0].id}`));
   for (let i = 0; i < n - 1; i++) {
-    lines.push(conn('routesResponseTo', `Call${subFlows[i].id}`, `Call${subFlows[i + 1].id}`));
+    lines.push(conn('routesResponseTo', `Call_${subFlows[i].id}`, `Call_${subFlows[i + 1].id}`));
   }
   for (const sf of subFlows) {
     lines.push(conn('routesTo', sf.id, `Do${sf.id}`));
     lines.push(conn('routesTo', `Do${sf.id}`, `End${sf.id}`));
   }
-  for (let i = 0; i < n; i++) lines.push(conn('routesTo', `Call${subFlows[i].id}`, subFlows[i].id));
+  for (let i = 0; i < n; i++) lines.push(conn('routesTo', `Call_${subFlows[i].id}`, subFlows[i].id));
 
   lines.push(`  <connections type="routesTo">\n    <source href="${globalErrorPath(n)}"/>\n    <target href="assembly.xml#DeliverError"/>\n  </connections>`);
   for (let i = 0; i < n; i++) {
     lines.push(`  <connections type="routesTo">\n    <source href="${sendErrorInsideDoSubFlow(n, i)}"/>\n    <target href="assembly.xml#Put${subFlows[i].id}Error"/>\n  </connections>`);
   }
 
-  const mainElems = ['StartHere', ...subFlows.map(sf => `Call${sf.id}`)];
+  const mainElems = ['StartHere', ...subFlows.map(sf => `Call_${sf.id}`)];
   lines.push(swimlane(30, 140, 'Main Flow', 'MIDDLE', mainElems));
   lines.push(swimlane(30, 20, 'Error Handler', 'END', [{ emf: globalErrorPath(n) }, 'DeliverError']));
 
@@ -469,7 +483,7 @@ function buildPlanDocument(projectName, subFlows, designBrief) {
 
   const chain = subFlows.map((sf, i) => {
     const next = subFlows[i + 1];
-    return `Call${sf.id}${next ? ` →(routes-response-to)→ Call${next.id}` : ' (final)'}`;
+    return `Call_${sf.id}${next ? ` →(routes-response-to)→ Call_${next.id}` : ' (final)'}`;
   }).join('\n  ');
 
   const contract = subFlows.map(sf => ({
@@ -526,8 +540,22 @@ function buildPlanDocument(projectName, subFlows, designBrief) {
     })),
     emf_xpath_summary: emfSummary,
     build_order: buildBuildOrder(subFlows, designBrief),
+    naming_conventions: {
+      'cc:local-out (call)':       'Call_{SubFlowName}  — e.g. Call_LoadAttrs, Call_AzureToken',
+      'cc:local-in':               '{SubFlowName}       — entry noun, matches vm:// endpoint  e.g. LoadAttrs, AzureToken',
+      'cc:async-mediation (stub)': 'Do{SubFlowName}     — RENAME before testing to Verb+Object  e.g. PrepareTermination, ParseGraphUsers',
+      'cc:async-mediation (real)': 'Verb+Object         — e.g. InitBatch, SetTransactionProps, CountWDWorkers',
+      'cc:send-error':             '{SubFlowName}Error  — e.g. LoadAttrsError, PrepareTokenError',
+      'cc:local-out (error)':      'Put{SubFlowName}Error — e.g. PutLoadAttrsFail, PutAzureTokenFail',
+      'cc:route':                  'RouteBy{Criteria}   — e.g. RouteByTransactionType, RouteByWorkerType',
+      'cc:splitter':               'SplitBy{Element}    — e.g. SplitByEmployee, SplitByTransaction',
+      'cc:workday-out-*':          'Call{Api}{Operation} — e.g. GetWDWorkersRAAS, CallStaffingTerminateEmployee',
+      'rename_tool':               'Use rename_steps tool to atomically rename IDs in both assembly.xml and assembly-diagram.xml — never rename by hand',
+    },
     warnings: [
       'Do NOT add XML comments to assembly.xml — they shift @mixed indices and break diagram connections',
+      'RENAME Do{SubFlowName} stubs to Verb+Object before running integration — use rename_steps tool',
+      'rename_steps must update BOTH assembly.xml and assembly-diagram.xml atomically — manual renames cause scala.MatchError',
       'Props keys with dots (e.g. my.prop.name) are fine in MVEL but MUST use underscores as xsl:param names',
       'xml-stream-splitter streams records one at a time — parts[0] inside async-mediation has ONE entry',
       'xpath-splitter loads all records into memory — only use for small datasets (<100 records)',

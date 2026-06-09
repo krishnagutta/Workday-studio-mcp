@@ -27,10 +27,11 @@ import { register as registerUpdateSubFlow } from './tools/update-sub-flow.mjs';
 import { register as registerValidateAssembly } from './tools/validate-assembly.mjs';
 import { register as registerParseServerLog } from './tools/parse-server-log.mjs';
 import { register as registerLogLearning } from './tools/log-learning.mjs';
+import { register as registerRenameSteps } from './tools/rename-steps.mjs';
 
 const server = new McpServer({
   name: 'studio-file-mcp',
-  version: '1.1.0',
+  version: '1.2.0',
 });
 
 // File navigation
@@ -64,6 +65,7 @@ registerPlanIntegration(server);
 // Assembly editing
 registerUpdateSubFlow(server);
 registerValidateAssembly(server);
+registerRenameSteps(server);
 
 // Diagnostics (parses local log files only — no network calls)
 registerParseServerLog(server);
