@@ -637,3 +637,116 @@ Safe rules:
 ```
 **Promote to**: get-step-type-reference.mjs
 **Status**: raw
+
+### [2026-05-21] Use cc:workday-out-rest for RAAS — never cc:workday-out-soap + cc:xslt-plus
+**Category**: Assembly
+**Trigger**: Used cc:workday-out-soap with application= and a cc:xslt-plus to build an Execute_Report_Request envelope for a RAAS call. Wrong pattern — Studio showed the XSLT step incorrectly in the diagram and the SOAP application name for custom reports is not discoverable without checking the report's web service endpoint.
+**Pattern**: RAAS calls use cc:workday-out-rest (top-level, never inside cc:steps) with extra-path resolving a cloud:report-alias via intsys.reportService.getExtrapath(). No request body XSL needed. The cloud:report-alias must be declared inside cloud:report-service inside cc:integration-system in cc:workday-in. Response is wd:Report_Data/wd:Report_Entry directly — no SOAP envelope wrapper. Always call get_step_type_reference('workday-out-rest') before writing any RAAS integration.
+**Example**:
+```xml
+<!-- In cc:workday-in: -->
+<cloud:report-service name="INT999_Reports">
+  <cloud:report-alias description="INT999 TBR Active Employees" name="INT999_TBR_Active_Employees"/>
+</cloud:report-service>
+
+<!-- Top-level in cc:assembly: -->
+<cc:workday-out-rest id="GetWDWorkersRAAS" routes-response-to="CountWDWorkers"
+    extra-path="@{intsys.reportService.getExtrapath('INT999_TBR_Active_Employees')}"/>
+
+<!-- Response XPath (no envelope): -->
+count(/wd:Report_Data/wd:Report_Entry)
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-09] Naming conventions for Studio palette components (cc:async-mediation, cc:local-in, cc:route, etc.)
+**Category**: Assembly
+**Trigger**: Existing integrations used auto-generated names like AsyncMediation0, AsyncMediation3, AsyncMediation17 — unreadable in the palette and impossible to reason about without opening the XML
+**Pattern**: Use verb+object (or noun) patterns per element type so the palette is self-documenting:
+
+cc:async-mediation → Verb + Object (PascalCase)
+  Examples: InitBatch, SetTransactionProps, SetEmployeeProps, CheckDuplicate, PrepareTermination, ParseGraphUsers, CountWDWorkers
+
+cc:local-in → Sub-flow entry noun (the name of what this sub-flow does)
+  Examples: LoadAttrs, AzureToken, GraphUsers, WDWorkers, GeneratePayload, LookupEmployee, TermProcess
+
+cc:local-out (calling a sub-flow) → Call + SubFlowName
+  Examples: Call_LoadAttrs, Call_AzureToken, Call_GraphUsers, Call_WDWorkers
+
+cc:local-out (error delivery) → Put + SubFlowName + Fail
+  Examples: PutLoadAttrsFail, PutAzureTokenFail, PutGraphUsersFail
+
+cc:route → RouteBy + Criteria
+  Examples: RouteByTransactionType, RouteByPositionExists, RouteByWorkerType
+
+cc:splitter → SplitBy + Element
+  Examples: SplitByEmployee, SplitByTransaction
+
+cc:send-error (inside async-mediation) → SubFlowName + Error
+  Examples: LoadAttrsError, PrepareTokenError, ParseGraphError
+
+cc:workday-out-* → Call + Api + Operation (PascalCase)
+  Examples: CallStaffingTerminateEmployee, GetWDWorkersRAAS, PostGraphBatch
+
+Error handler local-out for global errors → DeliverError (singleton)
+Error handler cc:send-error global → GlobalErrorHandler (singleton)
+
+Rationale: Studio shows all IDs flat in the palette. Without verb+object naming you cannot distinguish 5 async-mediations from each other. Names also appear in server logs — readable names make log triage 10x faster.
+**Example**:
+```xml
+<!-- BAD — auto-generated, unreadable -->
+<cc:async-mediation id="AsyncMediation0" .../>
+<cc:async-mediation id="AsyncMediation3" .../>
+<cc:async-mediation id="AsyncMediation17" .../>
+<cc:local-in id="SubFlow0" .../>
+<cc:local-out id="LocalOut1" .../>
+
+<!-- GOOD — verb+object, self-documenting -->
+<cc:async-mediation id="InitBatch" .../>
+<cc:async-mediation id="SetTransactionProps" .../>
+<cc:async-mediation id="PrepareTermination" .../>
+<cc:local-in id="LookupEmployee" .../>
+<cc:local-out id="Call_LookupEmployee" .../>
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-06-09] rename_steps tool concept: atomic rename across assembly.xml AND assembly-diagram.xml
+**Category**: Diagram
+**Trigger**: Manually renaming a step ID in assembly.xml without updating the matching href in assembly-diagram.xml caused a scala.MatchError crash when Studio tried to open the diagram. The reverse (renaming in diagram but not assembly) causes the same crash. This happened twice during INT999 / INT999 work.
+**Pattern**: Any ID rename in assembly.xml requires a matching update in assembly-diagram.xml. The diagram file references assembly element IDs via href attributes in three forms:
+  1. visualProperties: <element href="assembly.xml#OldID"/>
+  2. connections source/target: <source href="assembly.xml#OldID"/> / <target href="assembly.xml#OldID"/>
+  3. swimlanes elements: <elements href="assembly.xml#OldID"/>
+
+Missing any one of these causes scala.MatchError on diagram open (no meaningful error message — Studio just crashes the editor).
+
+The studio-mcp should have a rename_steps tool that:
+  1. Takes project_name, old_id, new_id
+  2. Reads both assembly.xml and assembly-diagram.xml
+  3. Does a safe string replace of id="OldID" in assembly.xml (with surrounding quotes to avoid partial matches)
+  4. Does a safe string replace of #OldID" in assembly-diagram.xml (all href forms use #ID" suffix)
+  5. Writes both files atomically
+  6. Runs validate_assembly on the result
+  7. Returns a diff summary of every location changed
+
+Until the tool exists: ALWAYS use studio-mcp write_integration_file to write both files in the same operation, never rename by hand in the XML editor.
+**Example**:
+```xml
+<!-- assembly.xml — must change id= attribute -->
+<cc:async-mediation id="AsyncMediation3" .../>   <!-- OLD -->
+<cc:async-mediation id="SetTransactionProps" .../> <!-- NEW -->
+
+<!-- assembly-diagram.xml — must change ALL three href forms -->
+<!-- OLD -->
+<element href="assembly.xml#AsyncMediation3"/>
+<source href="assembly.xml#AsyncMediation3"/>
+<elements href="assembly.xml#AsyncMediation3"/>
+
+<!-- NEW -->
+<element href="assembly.xml#SetTransactionProps"/>
+<source href="assembly.xml#SetTransactionProps"/>
+<elements href="assembly.xml#SetTransactionProps"/>
+```
+**Promote to**: all
+**Status**: raw
