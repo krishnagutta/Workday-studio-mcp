@@ -569,7 +569,8 @@ The validate step after assembly edits should be treated as two steps:
 ]]>
 ```
 **Promote to**: validate-assembly.mjs
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10
 
 ### [2026-05-15] Inserting a new swimlane shifts all #//@swimlanes.N index refs and breaks the diagram
 **Category**: Diagram
@@ -603,7 +604,8 @@ Safe rules:
 ]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10
 
 ### [2026-05-21] Renaming a step ID in assembly.xml requires the same rename in assembly-diagram.xml
 **Category**: Diagram
@@ -617,7 +619,8 @@ Safe rules:
 <!-- GOOD --> <element href="assembly.xml#PostGraphBatch"/>
 ```
 **Promote to**: validate-assembly.mjs
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10
 
 ### [2026-05-21] cc:message-content has no maxlength attribute
 **Category**: Schema
@@ -636,7 +639,8 @@ Safe rules:
 </cc:log>
 ```
 **Promote to**: get-step-type-reference.mjs
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10
 
 ### [2026-05-21] Use cc:workday-out-rest for RAAS — never cc:workday-out-soap + cc:xslt-plus
 **Category**: Assembly
@@ -657,7 +661,8 @@ Safe rules:
 count(/wd:Report_Data/wd:Report_Entry)
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10
 
 ### [2026-06-09] Naming conventions for Studio palette components (cc:async-mediation, cc:local-in, cc:route, etc.)
 **Category**: Assembly
@@ -709,7 +714,8 @@ Rationale: Studio shows all IDs flat in the palette. Without verb+object naming 
 <cc:local-out id="Call_LookupEmployee" .../>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10
 
 ### [2026-06-09] rename_steps tool concept: atomic rename across assembly.xml AND assembly-diagram.xml
 **Category**: Diagram
@@ -749,4 +755,5 @@ Until the tool exists: ALWAYS use studio-mcp write_integration_file to write bot
 <elements href="assembly.xml#SetTransactionProps"/>
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-06-10

@@ -9,12 +9,13 @@ export function register(server) {
   server.tool(
     'validate_assembly',
     [
-      'Validates assembly.xml against Studio-specific rules beyond XML well-formedness.',
+      'Validates assembly.xml (and assembly-diagram.xml if present) against Studio-specific rules.',
       '',
-      'Checks performed:',
+      'assembly.xml checks:',
       '  ERROR   — XML comments present (shifts @mixed indices, breaks diagram connections)',
       '  ERROR   — Broken routes-to / routes-response-to (target id does not exist)',
       '  ERROR   — cc:workday-out-soap missing application= or version=',
+      '  ERROR   — cc:workday-out-soap used for RAAS (must use cc:workday-out-rest)',
       '  ERROR   — cc:workday-out-rest missing extra-path=',
       '  ERROR   — cc:http-out missing endpoint=',
       '  ERROR   — cc:xslt-plus missing url=',
@@ -22,7 +23,12 @@ export function register(server) {
       '  WARNING — url= references an XSL file not found in WSAR-INF',
       '  INFO    — TODO stubs still present (sub-flows not yet filled in)',
       '',
-      'Run this after update_sub_flow (it also runs automatically) or any manual edit.',
+      'assembly-diagram.xml checks (when diagram file exists):',
+      '  ERROR   — diagram href="assembly.xml#Id" points to an id no longer in assembly.xml',
+      '            (stale reference from a rename or delete — causes scala.MatchError on open)',
+      '  WARNING — renderable assembly element has no diagram entry (missing from visualProperties)',
+      '',
+      'Run this after update_sub_flow, any manual assembly edit, or any component rename/delete.',
       'Fix all ERRORs before opening in Studio. WARNINGs block testing, not diagram load.',
     ].join('\n'),
     {
@@ -41,8 +47,12 @@ export function register(server) {
         );
       }
 
-      const xml    = await readFile(assemblyPath, 'utf-8');
-      const issues = validateAssembly(xml, wsDir);
+      const xml         = await readFile(assemblyPath, 'utf-8');
+      const diagramPath = join(wsDir, 'assembly-diagram.xml');
+      const diagramXml  = existsSync(diagramPath)
+        ? await readFile(diagramPath, 'utf-8')
+        : null;
+      const issues = validateAssembly(xml, wsDir, diagramXml);
 
       const errors   = issues.filter(i => i.severity === 'ERROR');
       const warnings = issues.filter(i => i.severity === 'WARNING');

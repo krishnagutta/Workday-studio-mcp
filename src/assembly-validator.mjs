@@ -8,7 +8,7 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-export function validateAssembly(xml, wsDir = null) {
+export function validateAssembly(xml, wsDir = null, diagramXml = null) {
   const issues = [];
 
   checkNoXmlComments(xml, issues);
@@ -20,6 +20,29 @@ export function validateAssembly(xml, wsDir = null) {
   if (wsDir) checkXslFileReferences(xml, wsDir, issues);
   checkCcNote(xml, issues);
   checkTodoStubs(xml, issues);
+  checkRaasViaSoap(xml, issues);
+
+  if (diagramXml) {
+    // Check for assembly elements not referenced in diagram (drift from assembly add/remove)
+    const driftMissing = checkDiagramDrift(xml, diagramXml);
+    for (const { tag, id } of driftMissing) {
+      issues.push({
+        severity: 'WARNING',
+        code: 'DIAGRAM_MISSING_ELEMENT',
+        message: `<${tag} id="${id}"> exists in assembly.xml but has no entry in assembly-diagram.xml. Add visualProperties + connections + swimlane membership before opening Studio.`,
+      });
+    }
+
+    // Check for diagram hrefs that point to IDs no longer in assembly (rename/delete drift)
+    const staleRefs = checkStaleDiagramHrefs(xml, diagramXml);
+    for (const { href } of staleRefs) {
+      issues.push({
+        severity: 'ERROR',
+        code: 'STALE_DIAGRAM_HREF',
+        message: `assembly-diagram.xml contains href="${href}" but no element with that id exists in assembly.xml. This will cause scala.MatchError when Studio opens the diagram. Either rename or remove this reference.`,
+      });
+    }
+  }
 
   return issues;
 }
@@ -256,6 +279,60 @@ export function checkDiagramDrift(assemblyXml, diagramXml) {
   }
 
   return missing;
+}
+
+// ─── Rule: RAAS calls must use cc:workday-out-rest, not cc:workday-out-soap ───
+// Custom Workday reports are always called via REST + cloud:report-alias.
+// Using cc:workday-out-soap for report execution does not work with custom reports
+// and causes incorrect diagram rendering.
+
+function checkRaasViaSoap(xml, issues) {
+  // Look for patterns that suggest someone is trying to run a report via SOAP:
+  // operation names containing "Report" or extra-path on a workday-out-soap
+  const soapTags = [...xml.matchAll(/<cc:workday-out-soap\b[^>]*/g)];
+  for (const m of soapTags) {
+    const tagText = m[0];
+    if (/\boperation=["'][^"']*[Rr]eport[^"']*["']/.test(tagText)) {
+      issues.push({
+        severity: 'ERROR',
+        code: 'RAAS_VIA_SOAP',
+        message: `cc:workday-out-soap (id="${extractId(tagText)}") appears to target a report operation. RAAS calls must use cc:workday-out-rest with extra-path="@{intsys.reportService.getExtrapath('ALIAS')}". SOAP does not work for custom reports.`,
+      });
+    }
+  }
+
+  // Also flag if report-related extra-path patterns appear on workday-out-soap
+  for (const m of xml.matchAll(/<cc:workday-out-soap\b[^>]*extra-path=/g)) {
+    issues.push({
+      severity: 'ERROR',
+      code: 'SOAP_WITH_EXTRA_PATH',
+      message: `cc:workday-out-soap does not support extra-path. For RAAS calls, use cc:workday-out-rest instead.`,
+    });
+  }
+}
+
+// ─── Stale diagram href detection ────────────────────────────────────────────
+// Checks for diagram href="assembly.xml#SomeId" references where SomeId no longer
+// exists in assembly.xml. This is the most common cause of scala.MatchError after
+// a rename or delete — the diagram still points to the old ID.
+//
+// Only checks id-based hrefs (not positional @mixed refs, which are handled
+// separately by the @mixed index verification script in patterns.md).
+
+export function checkStaleDiagramHrefs(assemblyXml, diagramXml) {
+  const assemblyIds = collectIds(assemblyXml);
+  const stale = [];
+
+  for (const m of diagramXml.matchAll(/href="assembly\.xml#([^"@][^"]*)"/g)) {
+    const id = m[1];
+    // Skip positional paths (//@ prefix after the #)
+    if (id.startsWith('/')) continue;
+    if (!assemblyIds.has(id)) {
+      stale.push({ href: `assembly.xml#${id}` });
+    }
+  }
+
+  return stale;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
