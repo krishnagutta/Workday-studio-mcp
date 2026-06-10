@@ -228,6 +228,37 @@ The multiple arrows converging on a shared `PutError` terminal in the diagram ar
 </cc:async-mediation>
 ```
 
+### Component ID naming conventions
+
+Studio shows all element IDs flat in the palette. Without descriptive names, five `AsyncMediation` entries are indistinguishable. Names also appear in server logs — readable names make log triage 10× faster.
+
+| Element type | Convention | Examples |
+|---|---|---|
+| `cc:async-mediation` | Verb + Object (PascalCase) | `InitBatch`, `SetTransactionProps`, `PrepareTermination`, `ParseGraphUsers` |
+| `cc:local-in` | Sub-flow noun (what this flow produces) | `LoadAttrs`, `AzureToken`, `GraphUsers`, `LookupEmployee` |
+| `cc:local-out` (sub-flow call) | `Call_` + SubFlowName | `Call_LoadAttrs`, `Call_AzureToken`, `Call_GraphUsers` |
+| `cc:local-out` (error delivery) | `Put` + SubFlowName + `Fail` | `PutLoadAttrsFail`, `PutAzureTokenFail` |
+| `cc:route` | `RouteBy` + Criteria | `RouteByTransactionType`, `RouteByPositionExists` |
+| `cc:splitter` | `SplitBy` + Element | `SplitByEmployee`, `SplitByTransaction` |
+| `cc:send-error` (inside mediation) | SubFlowName + `Error` | `LoadAttrsError`, `PrepareTokenError` |
+| `cc:workday-out-*` | `Call` + Api + Operation | `CallStaffingTerminate`, `GetWDWorkersRAAS`, `PostGraphBatch` |
+| Global error `cc:local-out` | `DeliverError` (singleton) | — |
+| Global `cc:send-error` | `GlobalErrorHandler` (singleton) | — |
+
+```xml
+<!-- BAD — auto-generated, palette shows five mediations with no context -->
+<cc:async-mediation id="AsyncMediation0" .../>
+<cc:async-mediation id="AsyncMediation3" .../>
+<cc:local-in id="SubFlow0" .../>
+<cc:local-out id="LocalOut1" .../>
+
+<!-- GOOD — self-documenting in palette and server logs -->
+<cc:async-mediation id="InitBatch" .../>
+<cc:async-mediation id="PrepareTermination" .../>
+<cc:local-in id="LookupEmployee" .../>
+<cc:local-out id="Call_LookupEmployee" .../>
+```
+
 ---
 
 ## Diagram Rules
@@ -406,6 +437,36 @@ When removing a top-level element from `assembly.xml`, drop all three correspond
 
 If you skip step 1-3, Studio shows: `scala.MatchError: org.eclipse.emf.ecore.impl.EObjectImpl@... (eProxyURI: ...assembly.xml#DeletedId)`. Each unresolved href returns an `EObjectImpl` with only `eProxyURI` set; Studio's `Factory.scala:19` has no match case for unresolved proxies, so the editor part fails to initialize and a cascading `IWorkbenchWindow` NPE follows.
 
+### Renaming a step ID requires matching rename in both files
+
+Every element `id=` attribute in `assembly.xml` has up to three corresponding forms in `assembly-diagram.xml`. When you rename a step ID, ALL three forms must be updated in the same change:
+
+| Form | Example |
+|---|---|
+| `visualProperties` | `<element href="assembly.xml#OldID"/>` |
+| `connections` source/target | `<source href="assembly.xml#OldID"/>` |
+| `swimlanes` element ref | `<elements href="assembly.xml#OldID"/>` |
+
+Missing any one of these causes `scala.MatchError` on diagram open — Studio crashes the editor with no useful error message.
+
+**Safe rename process:**
+1. Rename `id="OldID"` → `id="NewID"` in `assembly.xml`
+2. `grep -r "OldID" ws/WSAR-INF/assembly-diagram.xml` to find every occurrence
+3. Replace all `#OldID"` → `#NewID"` in `assembly-diagram.xml` (the `#` prefix plus trailing `"` ensures no partial matches)
+4. Run `validate_assembly` — it checks for stale diagram hrefs
+
+The `rename_steps` studio-mcp tool (if installed) does this atomically.
+
+```xml
+<!-- assembly.xml — id renamed -->
+<cc:async-mediation id="SetTransactionProps" .../>  <!-- was: AsyncMediation3 -->
+
+<!-- assembly-diagram.xml — ALL three href forms must change -->
+<element href="assembly.xml#SetTransactionProps"/>      <!-- was: #AsyncMediation3 -->
+<source  href="assembly.xml#SetTransactionProps"/>      <!-- was: #AsyncMediation3 -->
+<elements href="assembly.xml#SetTransactionProps"/>     <!-- was: #AsyncMediation3 -->
+```
+
 ### Don't remove swimlanes — empty them
 
 Removing a `<swimlanes>` container shifts every `#//@swimlanes.N` reference and breaks unrelated parts of the diagram. Empty the container instead:
@@ -418,6 +479,31 @@ Removing a `<swimlanes>` container shifts every `#//@swimlanes.N` reference and 
 
 <!-- After: keep container with no children, indices unchanged -->
 <swimlanes x="..." name="..."/>
+```
+
+### Never insert a swimlane between existing ones
+
+Swimlane cross-references use zero-based positional indices (`#//@swimlanes.0`, `#//@swimlanes.1`, etc.), not IDs. Inserting a new swimlane anywhere except the very end silently corrupts every reference with a higher index — all those connections silently point to the wrong swimlane.
+
+**Safe rules:**
+- NEVER insert a swimlane between existing ones.
+- Only APPEND new swimlanes at the very end of the swimlanes list.
+- When adding components to an existing sub-flow, add them as `<elements>` inside an existing swimlane — usually `Master` for startup-flow steps.
+
+```xml
+<!-- WRONG — inserting in the middle shifts all downstream #//@swimlanes.N refs -->
+<swimlanes name="Master"> ... </swimlanes>
+<swimlanes name="New Swimlane">    <!-- inserted here — BREAKS everything below -->
+  <elements href="assembly.xml#NewStep"/>
+</swimlanes>
+<swimlanes name="SomeLane"> ... </swimlanes>  <!-- was index 1, now index 2 -->
+
+<!-- SAFE — add new component into existing Master swimlane instead -->
+<swimlanes name="Master">
+  <elements href="assembly.xml#AsyncMediation"/>
+  <elements href="assembly.xml#GetBearerToken_Out"/>  <!-- added here, no index shift -->
+  <elements href="assembly.xml#FetchTokenMediation"/>
+</swimlanes>
 ```
 
 ### Swimlane layout template
@@ -1415,6 +1501,25 @@ RAAS report schema (field names, nesting, namespace attributes) is defined in th
 > "Can you run this report in Workday and paste a few rows of the XML response? I'll use that to write the correct XPath expressions."
 
 Even 1-2 rows is enough. Don't guess field names from report aliases alone — they can be anything (`wd:workdayID`, `wd:Employee`, `wd:Supervisory_Organization`). Accurate XPath requires seeing the actual XML.
+
+### Use `cc:workday-out-rest` for RAAS — never `cc:workday-out-soap`
+
+Custom report calls in Studio always use `cc:workday-out-rest` + `cloud:report-alias`. Never use `cc:workday-out-soap` for RAAS — SOAP-based report execution does not work with Workday custom reports, produces incorrect diagram rendering (`cc:xslt-plus` steps appear disconnected), and Studio's diagram validator will flag it.
+
+```xml
+<!-- WRONG: SOAP is not the path for custom report execution -->
+<cc:workday-out-soap id="RunReport" application="..." version="v46.1"/>
+
+<!-- CORRECT: REST via cloud:report-alias (ALL custom reports use this) -->
+<cloud:report-service name="INT161B_Reports">
+  <cloud:report-alias description="TBR active employees" name="INT161B_TBR_Active_Employees"/>
+</cloud:report-service>
+
+<cc:workday-out-rest id="GetWDWorkersRAAS" routes-response-to="CountWDWorkers"
+  extra-path="@{intsys.reportService.getExtrapath('INT161B_TBR_Active_Employees')}"/>
+```
+
+The response is `wd:Report_Data/wd:Report_Entry` directly with no SOAP envelope. Call `get_step_type_reference('workday-out-rest')` before writing any RAAS step to confirm the current alias and filter syntax.
 
 ---
 
