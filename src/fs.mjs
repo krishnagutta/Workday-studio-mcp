@@ -1,6 +1,6 @@
 import { readdir, readFile, stat, writeFile, copyFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
-import { resolve, join, dirname, relative, extname, basename } from 'path';
+import { resolve, join, dirname, relative, extname, basename, sep } from 'path';
 import { config } from './config.mjs';
 
 const INTEGRATION_EXTENSIONS = new Set(['.xsl', '.xslt', '.xml', '.wsdl', '.xsd']);
@@ -8,7 +8,7 @@ const INTEGRATION_EXTENSIONS = new Set(['.xsl', '.xslt', '.xml', '.wsdl', '.xsd'
 export function resolveSafe(projectName, filePath) {
   const projectRoot = resolve(config.workspacePath, projectName);
   const absolute = resolve(projectRoot, filePath);
-  if (!absolute.startsWith(config.workspacePath + '/') && absolute !== config.workspacePath) {
+  if (!absolute.startsWith(config.workspacePath + sep) && absolute !== config.workspacePath) {
     const err = new Error(`Path traversal detected: ${filePath}`);
     err.code = 'PATH_TRAVERSAL_DETECTED';
     throw err;
