@@ -1,11 +1,10 @@
 import { z } from 'zod';
 import { readFile, writeFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { existsSync } from 'fs';
 import { XMLParser } from 'fast-xml-parser';
-import { config } from '../config.mjs';
 import { validateAssembly, checkDiagramDrift } from '../assembly-validator.mjs';
-import { backupFile } from '../fs.mjs';
+import { backupFile, resolveSafe } from '../fs.mjs';
 
 // ─── Public tool registration ─────────────────────────────────────────────────
 
@@ -54,7 +53,16 @@ export function register(server) {
         .describe('New step elements for inside <cc:steps>. Omit the <cc:steps> wrapper. Use \\t for tabs at 4-tab depth.'),
     },
     async ({ project_name, sub_flow_id, steps_xml }) => {
-      const projectPath = resolve(config.workspacePath, project_name);
+      let projectPath;
+      try {
+        projectPath = resolveSafe(project_name, '').projectRoot;
+      } catch {
+        return errResponse(
+          'INVALID_PROJECT_NAME',
+          `Invalid project name '${project_name}' — resolves outside the workspace.`,
+          'project_name must be a folder inside the configured workspace, not a path containing ../ segments.',
+        );
+      }
       const assemblyPath = join(projectPath, 'ws', 'WSAR-INF', 'assembly.xml');
 
       if (!existsSync(assemblyPath)) {

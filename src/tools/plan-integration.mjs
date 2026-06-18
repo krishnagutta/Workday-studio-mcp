@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { writeFile } from 'fs/promises';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { existsSync } from 'fs';
-import { config } from '../config.mjs';
+import { resolveSafe } from '../fs.mjs';
 
 // ─── Design brief schema ──────────────────────────────────────────────────────
 
@@ -138,7 +138,16 @@ export function register(server) {
       design_brief: DesignBriefSchema,
     },
     async ({ project_name, sub_flows, design_brief }) => {
-      const projectPath = resolve(config.workspacePath, project_name);
+      let projectPath;
+      try {
+        projectPath = resolveSafe(project_name, '').projectRoot;
+      } catch {
+        return errorResponse(
+          'INVALID_PROJECT_NAME',
+          `Invalid project name '${project_name}' — resolves outside the workspace.`,
+          'project_name must be a folder inside the configured workspace, not a path containing ../ segments.',
+        );
+      }
       const wsDir = join(projectPath, 'ws', 'WSAR-INF');
 
       if (!existsSync(projectPath)) {
