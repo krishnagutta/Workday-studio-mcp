@@ -168,7 +168,7 @@ function checkRequiredAttributes(xml, issues) {
 // ─── Rule: certain elements must be TOP-LEVEL, not inside cc:steps ───────────
 // cc:workday-out-rest, cc:splitter, cc:http-out, cc:email-out are assembly-level
 // routing elements. Studio's schema rejects them inside cc:steps.
-// Confirmed from INT095, INT069, INT060, INT144.
+// Confirmed across four production builds.
 
 const TOP_LEVEL_ONLY = ['cc:workday-out-rest', 'cc:splitter', 'cc:http-out', 'cc:email-out', 'cc:workday-out-soap'];
 
@@ -196,7 +196,7 @@ function checkTopLevelOnlyElements(xml, issues) {
 
 // ─── Rule: cc:splitter must NOT have a routes-to attribute ───────────────────
 // Studio's schema does not allow routes-to on cc:splitter. The splitter routes
-// via its cc:sub-route children only. Confirmed INT095, INT144.
+// via its cc:sub-route children only. Confirmed in production builds.
 
 function checkSplitterRoutes(xml, issues) {
   for (const m of xml.matchAll(/<cc:splitter\b[^>]*>/g)) {
