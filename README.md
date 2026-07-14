@@ -8,17 +8,18 @@ Everything runs **locally** on your machine — no network calls, no tenant cred
 
 ## What you get
 
-20 tools across these categories:
+23 tools across these categories:
 
 | Category | What it does |
 |---|---|
 | **Navigation** | `list_studio_projects`, `list_project_files`, `read_integration_file`, `search_studio_files`, `get_workspace_structure` |
 | **File management** | `write_integration_file`, `copy_file_from_project`, `rename_file`, `delete_file`, `validate_xml_file` |
 | **Project setup** | `create_studio_project`, `create_xsl_transform` |
-| **Assembly editing** | `list_assembly_steps`, `list_integration_params`, `add_assembly_step`, `update_sub_flow`, `validate_assembly` |
+| **Assembly editing** | `list_assembly_steps`, `list_integration_params`, `add_assembly_step`, `update_sub_flow`, `rename_steps`, `validate_assembly` |
 | **Planning** | `plan_integration` — design elicitation + skeleton generator |
-| **Reference** | `get_step_type_reference` — confirmed step type docs with production XML examples |
+| **Reference** | `get_step_type_reference` — confirmed step type docs with production XML examples; `lookup_soap_operations` — WWS service/operation lookup with WSDL links |
 | **Diagnostics** | `parse_server_log` — parse a Workday integration server log from `~/Downloads` |
+| **Knowledge capture** | `log_learning` — append a discovered pattern/gotcha to the shared intake log (`learnings.md`) |
 
 A growing knowledge base lives at [`docs/studio-integration-patterns.md`](docs/studio-integration-patterns.md) — hard-won lessons captured from real Studio debugging sessions.
 
@@ -164,6 +165,19 @@ Returns errors (broken routes, illegal comments, missing attributes) and warning
 
 Returns confirmed XML examples, schema rules, and gotchas.
 
+### Rename a step safely
+> "Rename AsyncMediation3 to SetTransactionProps"
+
+`rename_steps` updates the step ID in `assembly.xml` **and** every href in `assembly-diagram.xml` atomically — renaming in only one file crashes Studio's diagram view.
+
+### Find a SOAP operation
+> "Which WWS service has Put_Applicant?"
+
+`lookup_soap_operations` searches the Workday Web Services catalog and returns the service, common operations, and WSDL link.
+
+### Capture a discovery
+When Claude hits an undocumented Studio behavior during a session, it logs the pattern to `learnings.md` via `log_learning` — entries are reviewed and promoted into the curated knowledge base.
+
 ### Parse a server log
 After downloading a `server-{wid}.log` from Workday (View Integration Events → expand documents → click the `server-*.log`):
 
@@ -200,12 +214,16 @@ Workday-studio-mcp/
 │       ├── rename-file.mjs
 │       ├── delete-file.mjs
 │       ├── get-step-type-reference.mjs   # Step type docs
+│       ├── lookup-soap-operations.mjs    # WWS service/operation catalog
 │       ├── plan-integration.mjs          # Design elicitation
 │       ├── update-sub-flow.mjs           # Surgical sub-flow replacement
+│       ├── rename-steps.mjs              # Atomic step rename (assembly + diagram)
 │       ├── validate-assembly.mjs         # Studio rules engine
+│       ├── log-learning.mjs              # Knowledge-capture intake
 │       └── parse-server-log.mjs          # Local log parser
 ├── docs/
 │   └── studio-integration-patterns.md    # Shared knowledge base
+├── learnings.md                # Append-only learnings intake queue
 ├── bin/
 │   ├── install.sh
 │   └── quickstart.sh
