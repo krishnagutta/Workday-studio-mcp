@@ -15,7 +15,13 @@ This is how the team's shared knowledge base grows. Examples of when to call thi
 a build fails with an error not already in the step-type reference, Studio silently rejects \
 an element, MVEL throws an unexpected exception, a diagram crashes on open, a workaround \
 fixes something with no documented cause. Do NOT call it for things already documented in \
-get_step_type_reference or docs/studio-integration-patterns.md.`,
+get_step_type_reference or docs/studio-integration-patterns.md.
+
+PUBLIC-REPO RULE — GENERALIZE EVERY FIELD: learnings.md is published in a public repository \
+used across clients. Never include client integration IDs (use INT999), project names, \
+tenant or environment names (use <TENANT>), custom field names, or run/log identifiers. \
+Describe provenance generically ("verified in a live run", "observed in a production build") \
+— the technical pattern is the value, not where it came from.`,
     {
       title: z.string().describe('Short descriptive title, e.g. "cc:splitter cannot have routes-to attribute"'),
       category: z.enum(['Schema', 'Diagram', 'MVEL', 'XSLT', 'Assembly', 'HTTP', 'Error', 'Other'])
@@ -28,6 +34,11 @@ get_step_type_reference or docs/studio-integration-patterns.md.`,
     },
     async ({ title, category, trigger, pattern, example, promote_to }) => {
       const date = new Date().toISOString().slice(0, 10);
+
+      // Public repo: flag entries that look like they carry client-specific identifiers.
+      const CLIENT_ID_RE = /\bINT(?!999)\d{3}[A-Za-z]?\b|\btenant\s+[a-z][a-z0-9-]*\d[a-z0-9-]*\b/;
+      const suspect = [title, trigger, pattern, example ?? '']
+        .some((s) => CLIENT_ID_RE.test(s));
 
       const lines = [
         `\n### [${date}] ${title}`,
@@ -69,6 +80,10 @@ get_step_type_reference or docs/studio-integration-patterns.md.`,
               title,
               date,
               promote_to,
+              ...(suspect && {
+                warning: 'Entry may contain client-specific identifiers (integration ID or tenant name). '
+                  + 'This file is published publicly — edit the entry in learnings.md to use INT999/<TENANT> placeholders.',
+              }),
               message: `Logged to learnings.md. Ask the user to commit this so the team benefits from it.`,
             }, null, 2),
           }],

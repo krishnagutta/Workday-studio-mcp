@@ -295,7 +295,7 @@ Inserting N new top-level elements anywhere inside `cc:assembly` shifts ALL subs
 
 A reference at `@mixed.95` BEFORE a 6-element deletion + 1-comment add becomes `@mixed.95 - 12 + 2 = @mixed.85`.
 
-**Concrete example (INT144 Canada — JobCreation flow removal):**
+**Concrete example (JobCreation flow removal from a live build):**
 
 ```xml
 <!-- BEFORE: 6-element JobCreation flow removed + 1 XML comment inserted -->
@@ -820,7 +820,7 @@ Use inside `async-mediation` with `handle-downstream-errors="true"` and a `cc:se
 
 ```xml
 <cc:local-out id="NotifyOnError" execute-when="context.isError() == true"
-  endpoint="vm://INT012/Email_In" unset-properties="false">
+  endpoint="vm://INT999/Email_In" unset-properties="false">
   <cc:set name="Email_Failure_Reason" value="context.errorMessage"/>
 </cc:local-out>
 ```
@@ -1511,12 +1511,12 @@ Custom report calls in Studio always use `cc:workday-out-rest` + `cloud:report-a
 <cc:workday-out-soap id="RunReport" application="..." version="v46.1"/>
 
 <!-- CORRECT: REST via cloud:report-alias (ALL custom reports use this) -->
-<cloud:report-service name="INT161B_Reports">
-  <cloud:report-alias description="TBR active employees" name="INT161B_TBR_Active_Employees"/>
+<cloud:report-service name="INT999_Reports">
+  <cloud:report-alias description="TBR active employees" name="INT999_TBR_Active_Employees"/>
 </cloud:report-service>
 
 <cc:workday-out-rest id="GetWDWorkersRAAS" routes-response-to="CountWDWorkers"
-  extra-path="@{intsys.reportService.getExtrapath('INT161B_TBR_Active_Employees')}"/>
+  extra-path="@{intsys.reportService.getExtrapath('INT999_TBR_Active_Employees')}"/>
 ```
 
 The response is `wd:Report_Data/wd:Report_Entry` directly with no SOAP envelope. Call `get_step_type_reference('workday-out-rest')` before writing any RAAS step to confirm the current alias and filter syntax.
