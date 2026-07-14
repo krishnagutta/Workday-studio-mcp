@@ -782,7 +782,7 @@ Until the tool exists: ALWAYS use studio-mcp write_integration_file to write bot
 &lt;element href="assembly.xml#Call_GetWorkers"/&gt;  (× 15 occurrences)
 ```
 **Promote to**: validate-assembly.mjs
-**Status**: raw
+**Status**: already-covered (STALE_DIAGRAM_HREF error added to src/assembly-validator.mjs in d47ef95; verified 2026-07-13 against the entry's exact scenario)
 
 ### [2026-06-26] plan_integration scaffolds diagram with dangling End{SubFlowName} refs
 **Category**: Diagram
@@ -808,7 +808,8 @@ Until the tool exists: ALWAYS use studio-mcp write_integration_file to write bot
 &lt;!-- WORKAROUND we applied: strip all 27 dangling End* refs from assembly-diagram.xml via regex --&gt;
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted (patterns.md; validator already covered by STALE_DIAGRAM_HREF since d47ef95; step-reference skipped — no matching step type)
+**Promoted**: 2026-07-13
 
 ### [2026-06-26] cc:send-error elements cannot be referenced by ID in assembly-diagram.xml — must use @mixed XPath
 **Category**: Diagram
@@ -830,7 +831,8 @@ Until the tool exists: ALWAYS use studio-mcp write_integration_file to write bot
 &lt;!-- (no visualProperties, no connection, no swimlane elements entry) --&gt;
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13 (validate-assembly.mjs rule only — patterns.md §"cc:send-error cannot be a diagram node" and the send-error step-type reference DIAGRAM RULES already covered the docs targets)
 
 ### [2026-06-26] Canonical assembly-diagram.xml patterns for RaaS-driven integrations
 **Category**: Diagram
@@ -888,7 +890,8 @@ Each DoX and PutXError step has BOTH a top-level visualProperties block AND memb
 &lt;swimlanes x="-26" y="-287" name="Master" orientation="VERTICAL" elements="//@swimlanes.0 //@swimlanes.1 //@swimlanes.4 //@swimlanes.6 //@swimlanes.8 //@swimlanes.10 //@swimlanes.12 //@swimlanes.14 //@swimlanes.16 //@swimlanes.18"/&gt;
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13 — points 2–4 promoted to patterns.md + get-step-type-reference.mjs (splitter, local-out) + assembly-validator.mjs (SWIMLANE_REF_FRAGMENT_FORM, REDUNDANT_VM_DISPATCH_ARROW). Point 1 send-error-by-XPath already covered (patterns.md 'cc:send-error cannot be a diagram node' + send-error step reference); its K+4 index arithmetic superseded by the 2026-07-09 @mixed formula entry (2k+1). Point 5 (Master swimlane) already in 'Swimlane layout template'; attribute-form example folded into the point-4 subsection.
 
 ### [2026-06-26] cc:log does not accept condition attribute — use cc:cloud-log or compute status in cc:eval
 **Category**: Schema
@@ -914,7 +917,8 @@ Each DoX and PutXError step has BOTH a top-level visualProperties block AND memb
 &lt;cc:cloud-log condition="props['LogType']=='Info'" level="info" message="..." variable-name="cloud-log-content"/&gt;
 ```
 **Promote to**: validate-assembly.mjs
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-06-28] Each (Do{X} + Put{X}Error) pair in a sub-flow gets its own nested VERTICAL swimlane child
 **Category**: Diagram
@@ -950,7 +954,8 @@ Each DoX and PutXError step has BOTH a top-level visualProperties block AND memb
 &lt;/connections&gt;
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13 (patterns.md + get-step-type-reference.mjs + validate-assembly.mjs; the "N = 19 + 4*K" @mixed aside was NOT promoted — superseded by the general 2k+1 formula in the 2026-07-09 "@mixed positional index formula" entry)
 
 ### [2026-06-28] MVEL cannot resolve fully-qualified class references inside ternary expressions
 **Category**: MVEL
@@ -975,7 +980,7 @@ Each DoX and PutXError step has BOTH a top-level visualProperties block AND memb
 &lt;cc:expression&gt;props['Current_Date'] = java.time.LocalDate.now();&lt;/cc:expression&gt;
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: superseded (see [2026-06-28] VERIFIED — MVEL 1.3 in Studio: avoid java.time static methods in per-message contexts, learnings.md line 1012; do not promote — claims disproven)
 
 ### [2026-06-28] CORRECTION — MVEL cannot resolve java.x.y.z anywhere except direct top-level RHS — if-bodies also fail
 **Category**: MVEL
@@ -1007,7 +1012,7 @@ Pattern applies to LocalDate.parse, ChronoUnit.DAYS.between, and any other fully
 &lt;cc:expression&gt;props['Days'] = props['IsValid'] == 'true' ? props['DaysParsed'] : null;&lt;/cc:expression&gt;
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: superseded (see [2026-06-28] VERIFIED "avoid java.time static methods in per-message contexts" + [2026-07-09] REFINEMENT — this entry's sentinel pattern was an unverified theory that proved wrong)
 
 ### [2026-06-28] VERIFIED — MVEL 1.3 in Studio: avoid java.time static methods in per-message contexts
 **Category**: MVEL
@@ -1018,7 +1023,8 @@ Pattern applies to LocalDate.parse, ChronoUnit.DAYS.between, and any other fully
 BAD pattern (fails everywhere in per-message contexts): props['Date'] = java.time.LocalDate.parse(props['Iso']); GOOD pattern: props['TodayIso'] = props['Current_Date'].toString(); props['CapFloorIso'] = props['Current_Date'].minusDays(props['MaxAge']).toString(); props['IsAbove'] = props['LeaveStartIso'].compareTo(props['CapFloorIso']) less-than-zero ? 'true' : 'false'
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-06-30] Consolidated single-document logging: accumulate-then-store-once across a splitter
 **Category**: Assembly
@@ -1056,7 +1062,8 @@ BAD pattern (fails everywhere in per-message contexts): props['Date'] = java.tim
 </cc:local-out>]]>
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] MVEL 1.3.13: a semicolon INSIDE a string literal fails the entire deploy with [Error: unterminated literal]
 **Category**: MVEL
@@ -1067,7 +1074,8 @@ BAD pattern (fails everywhere in per-message contexts): props['Date'] = java.tim
 BAD (fails whole deploy): props['x'] = 'a' + '; b';   GOOD: props['x'] = 'a' + ' - b';   Offline check: java -cp mvel-1.3.13-workday.12.jar:. CompileTest exprs/  -> "FAIL expr_160.txt :: [Error: unterminated literal]"
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] Read the message body as a string in cc:eval with parts[0].getText() — toString() returns the object handle
 **Category**: MVEL
@@ -1079,7 +1087,8 @@ BAD: props['Calc_CsvBody'] = (parts[0] == null) ? '' : parts[0].toString();  -> 
 GOOD: props['Calc_CsvBody'] = (parts[0] == null || parts[0].getText() == null) ? '' : parts[0].getText();
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] cc:xslt-plus binds props to same-named xsl:param — but only String-typed props; object-typed props bind EMPTY
 **Category**: XSLT
@@ -1091,7 +1100,8 @@ BAD: props['Current_Date'] = java.time.LocalDate.now();  + &lt;xsl:param name="C
 GOOD: props['Csv_RunDate'] = ('' + props['Current_Date']);  + &lt;xsl:param name="Csv_RunDate"/&gt;  -> '2026-07-09'
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] RaaS prompt parameters via extra-path query string on cc:workday-out-rest — verified working format
 **Category**: HTTP
@@ -1102,7 +1112,8 @@ GOOD: props['Csv_RunDate'] = ('' + props['Current_Date']);  + &lt;xsl:param name
 props['Calc_RaasParams'] = (props['RaasOrganizationsWID'] == null || props['RaasOrganizationsWID'].toString().trim() == '') ? '' : ('?Organizations!WID=' + props['RaasOrganizationsWID'].toString().trim() + '&amp;Include_Subordinate_Organizations=1&amp;Start_Date=' + props['Current_Date'].minusDays(90) + '&amp;End_Date=' + props['Current_Date']);
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] Oracle REST with an EMPTY query predicate returns arbitrary records — guard each lookup hop on the prior hop's result
 **Category**: HTTP
@@ -1114,7 +1125,8 @@ props['Calc_IsBlockedUserNotFound'] = (props['PersonNumber'] == null || props['P
 props['Calc_IsBlockedParticipantNotFound'] = (props['Calc_IsBlockedUserNotFound'] == 'false' &amp;&amp; (props['ParticipantId'] == null || props['ParticipantId'] == '')) ? 'true' : 'false';
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] Oracle Fusion Incentive Compensation write behaviors — verified live against a test environment
 **Category**: HTTP
@@ -1125,7 +1137,8 @@ props['Calc_IsBlockedParticipantNotFound'] = (props['Calc_IsBlockedUserNotFound'
 Success check after POST (json-to-xml'd): props['NewId'] = parts[0].xpath('root/data/ParticipantDetailId'); created = (NewId != ''). Error check after PATCH: props['ErrTitle'] = parts[0].xpath('root/title'); ok = (ErrTitle == '').
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] Consolidated CSV across a splitter: per-row cc:xslt-plus + cc:aggregator with header-text — survives vm-hop chains
 **Category**: Assembly
@@ -1136,7 +1149,8 @@ Success check after POST (json-to-xml'd): props['NewId'] = parts[0].xpath('root/
 &lt;cc:aggregator id="CollectCsvRows" routes-to="DoFinalizeCsv" force-batch-on-last-message="true"&gt;&lt;cc:size-batch-strategy batch-size="-1"/&gt;&lt;cc:message-content-collater&gt;&lt;cc:header-text&gt;run_timestamp,Employee_ID,...&lt;/cc:header-text&gt;&lt;/cc:message-content-collater&gt;&lt;/cc:aggregator&gt;
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] @mixed positional index formula for assembly-diagram.xml refs: index = 2 x (element position among assembly children) + 1
 **Category**: Diagram
@@ -1147,7 +1161,8 @@ Success check after POST (json-to-xml'd): props['NewId'] = parts[0].xpath('root/
 children = list(assembly_element); k = children.index(target); ref = f"assembly.xml#//@beans/@mixed.1/@mixed.{2*k+1}"
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] Diagram legibility: vm:// local-out/local-in hops are never drawn — insert adjacent local-outs to eliminate cross-canvas arrows
 **Category**: Diagram
@@ -1160,7 +1175,8 @@ children = list(assembly_element); k = children.index(target); ref = f"assembly.
 &lt;cc:local-in id="Phase5NoOp" routes-to="DoPhase5NoOpTerminator"/&gt;
 ```
 **Promote to**: patterns.md
-**Status**: raw
+**Status**: promoted
+**Promoted**: 2026-07-13
 
 ### [2026-07-09] REFINEMENT to java.time per-message rule: bootstrap-context (InitializeProperties) tolerates FQCN even inside ternary branches
 **Category**: MVEL
@@ -1171,4 +1187,5 @@ children = list(assembly_element); k = children.index(target); ref = f"assembly.
 Per-message safe date construction from ISO string (no FQCN): props['EpStartDate'] = props['Current_Date'].withDayOfMonth(1).withYear(Integer.parseInt(props['Iso'].substring(0, 4))).withMonth(Integer.parseInt(props['Iso'].substring(5, 7))).withDayOfMonth(Integer.parseInt(props['Iso'].substring(8, 10)));
 ```
 **Promote to**: all
-**Status**: raw
+**Status**: promoted (patterns.md MVEL section + eval step reference + validator rule JAVA_TIME_IN_PER_MESSAGE_EVAL)
+**Promoted**: 2026-07-13
