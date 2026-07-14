@@ -154,7 +154,7 @@ Both paths converge at the final destination:
 ### [2026-05-06] Proxy-vs-Direct API: error handling chain shifts from response-handler to send-error path
 **Category**: Assembly
 **Trigger**: Ported a "POST → AsyncMediation20 → AsyncMediation122 → AsyncMediation124 → CallDTA1" upsert recovery pattern from one country build into another's direct-Dayforce assembly. Wiring compiled fine, but on real Dayforce 400 errors (HR_Employee_DuplicateXRefCodeFound) the recovery never fired. Logs showed `BadRequestException` from `HttpRetryControl` going to `AsyncMediation12` (the HIR send-error handler) — never touching the response chain.
-**Pattern**: When an integration moves from a proxy that wraps everything in HTTP 200 (e.g., Boomi `lyft-test.boomi.cloud/...`) to direct API calls returning real status codes (e.g., `cantrain261.dayforcehcm.com`), error handling shifts paths entirely.
+**Pattern**: When an integration moves from a proxy that wraps everything in HTTP 200 (e.g., a middleware proxy such as Boomi) to direct API calls returning real status codes (the vendor API host), error handling shifts paths entirely.
 
 **Proxy era:** proxy returns 200 regardless of downstream outcome. Real error JSON is in the body. Studio's HTTP client never raises BadRequestException, so `cc:send-error` never fires. Errors are detected by parsing the body via `responsehandle.xsl` → setting `props['Error_Check']` → branching in the `routes-response-to` chain (e.g., `AsyncMediation20 → AsyncMediation122 → AsyncMediation124`). The `cc:send-error` handler on the wrapping async-mediation is effectively dead code.
 
@@ -162,7 +162,7 @@ Both paths converge at the final destination:
 
 **Implication for porting flows:** any error logic wired into the response-handler chain (e.g., `AsyncMediation124`) becomes dead code on real direct-API errors. Recovery logic must move into the `cc:send-error` path of the wrapping async-mediation and use `context.errorMessage` (the raw exception message containing the full Dayforce JSON with code fields) as the source of truth, NOT `props['Error_Message']` (which is only set by the response chain that didn't fire).
 
-**How to tell which path actually ran in logs:** response-chain → `-- HIRE Error Check 0----` followed by error JSON. Send-error path → `-- Error Boomi Log---` (legacy log message in `AsyncMediation12`) preceded by `BadRequestException` from `HttpRetryControl`.
+**How to tell which path actually ran in logs:** response-chain → the body-parse error-check marker followed by the error JSON. Send-error path → the send-error handler's log marker preceded by `BadRequestException` from `HttpRetryControl`.
 **Example**:
 ```xml
 <![CDATA[<!-- Wrapping async-mediation that handles both happy and error paths -->
@@ -652,12 +652,12 @@ Safe rules:
 ```xml
 <!-- In cc:workday-in: -->
 <cloud:report-service name="INT999_Reports">
-  <cloud:report-alias description="INT999 TBR Active Employees" name="INT999_TBR_Active_Employees"/>
+  <cloud:report-alias description="INT999 Active Employees" name="INT999_Active_Employees"/>
 </cloud:report-service>
 
 <!-- Top-level in cc:assembly: -->
 <cc:workday-out-rest id="GetWDWorkersRAAS" routes-response-to="CountWDWorkers"
-    extra-path="@{intsys.reportService.getExtrapath('INT999_TBR_Active_Employees')}"/>
+    extra-path="@{intsys.reportService.getExtrapath('INT999_Active_Employees')}"/>
 
 <!-- Response XPath (no envelope): -->
 count(/wd:Report_Data/wd:Report_Entry)
@@ -954,7 +954,7 @@ Each DoX and PutXError step has BOTH a top-level visualProperties block AND memb
 
 ### [2026-06-28] MVEL cannot resolve fully-qualified class references inside ternary expressions
 **Category**: MVEL
-**Trigger**: org.mvel.CompileException: unable to resolve property: java — thrown at runtime for every worker in DoBuildDecision when a cc:expression used a ternary with java.time.LocalDate.parse(...) as one branch: `props['X'] = cond ? java.time.LocalDate.parse(s) : null;`. The SAME call works at expression top-level (InitializeProperties uses `props['Current_Date'] = java.time.LocalDate.now()` successfully). The integration ran with status CompletedWithError; the BuildDecision send-error fired 7 times and no [Phase4b][DECISION] lines appeared.
+**Trigger**: org.mvel.CompileException: unable to resolve property: java — thrown at runtime for every worker in DoBuildDecision when a cc:expression used a ternary with java.time.LocalDate.parse(...) as one branch: `props['X'] = cond ? java.time.LocalDate.parse(s) : null;`. The SAME call works at expression top-level (InitializeProperties uses `props['Current_Date'] = java.time.LocalDate.now()` successfully). The integration ran with status CompletedWithError; the BuildDecision send-error fired 7 times and no [DECISION] lines appeared.
 **Pattern**: MVEL's expression compiler treats fully-qualified Java class references (e.g. `java.time.LocalDate`, `java.time.temporal.ChronoUnit`) as identifier chains. When such a reference appears as the THEN or ELSE branch of a ternary `?:`, the parser tries to resolve `java` as a property in scope first (e.g. `props['java']`, a local variable, etc.) and throws `unable to resolve property: java` when it fails. At expression top-level (immediately after `props['X'] = `), the compiler correctly recognizes the package-class-method chain. FIX: wrap any `java.x.y.z.method(...)` call inside an `if (cond) { props['X'] = java.x.y.z.method(...); }` block instead of using it as a ternary branch. Each if-statement still fits in one cc:expression. ALSO: MVEL does not support C-style casts — `(long) props['X']` throws parse errors. Just call the method directly; autoboxing handles the long primitive parameter (e.g. `props['date'].minusDays(props['days'])` where props['days'] is a Long works fine).
 **Example**:
 ```xml
@@ -1095,8 +1095,8 @@ GOOD: props['Csv_RunDate'] = ('' + props['Current_Date']);  + &lt;xsl:param name
 
 ### [2026-07-09] RaaS prompt parameters via extra-path query string on cc:workday-out-rest — verified working format
 **Category**: HTTP
-**Trigger**: A report on a prompted data source (Leave of Absence Outstanding by Date Range) needed Organizations + a rolling 90-day date window at RaaS call time; hardcoded report defaults went stale (fixed End_Date silently excluded all future leave events).
-**Pattern**: Append prompt parameters to the report alias path: extra-path="@{intsys.reportService.getExtrapath('ALIAS')}@{props['Calc_RaasParams']}" where Calc_RaasParams is built in InitializeProperties. Verified working elements: (1) prompt names are the report's 'Label For Prompt XML Alias' values (e.g. Start_Date, End_Date, Include_Subordinate_Organizations); (2) org prompts accept WID via the 'Name!WID=' form: Organizations!WID=c8d2...; (3) PLAIN ISO dates ('2026-04-10') are accepted — the browser-captured -07:00 TZ suffix is not required; (4) rolling windows computed with instance methods: '' + props['Current_Date'].minusDays(90); (5) make the whole param string conditional on a launch attribute so an empty attribute degrades to the bare alias path (report defaults take over). Runtime-verified: RunStart logged the assembled params and the returned population demonstrably honored the URL window over the report's stored defaults (rows whose dates only qualify under the URL window were present). Ampersands are &amp;amp; in the XML source; '!' needs no escaping.
+**Trigger**: A report on a prompted leave data source needed Organizations + a rolling 90-day date window at RaaS call time; hardcoded report defaults went stale (fixed End_Date silently excluded all future leave events).
+**Pattern**: Append prompt parameters to the report alias path: extra-path="@{intsys.reportService.getExtrapath('ALIAS')}@{props['Calc_RaasParams']}" where Calc_RaasParams is built in InitializeProperties. Verified working elements: (1) prompt names are the report's 'Label For Prompt XML Alias' values (e.g. Start_Date, End_Date, Include_Subordinate_Organizations); (2) org prompts accept WID via the 'Name!WID=' form: Organizations!WID=<the org WID>; (3) PLAIN ISO dates ('2026-04-10') are accepted — the browser-captured -07:00 TZ suffix is not required; (4) rolling windows computed with instance methods: '' + props['Current_Date'].minusDays(90); (5) make the whole param string conditional on a launch attribute so an empty attribute degrades to the bare alias path (report defaults take over). Runtime-verified: RunStart logged the assembled params and the returned population demonstrably honored the URL window over the report's stored defaults (rows whose dates only qualify under the URL window were present). Ampersands are &amp;amp; in the XML source; '!' needs no escaping.
 **Example**:
 ```xml
 props['Calc_RaasParams'] = (props['RaasOrganizationsWID'] == null || props['RaasOrganizationsWID'].toString().trim() == '') ? '' : ('?Organizations!WID=' + props['RaasOrganizationsWID'].toString().trim() + '&amp;Include_Subordinate_Organizations=1&amp;Start_Date=' + props['Current_Date'].minusDays(90) + '&amp;End_Date=' + props['Current_Date']);
@@ -1106,7 +1106,7 @@ props['Calc_RaasParams'] = (props['RaasOrganizationsWID'] == null || props['Raas
 
 ### [2026-07-09] Oracle REST with an EMPTY query predicate returns arbitrary records — guard each lookup hop on the prior hop's result
 **Category**: HTTP
-**Trigger**: A worker missing from Oracle (resourceUsers miss → PersonNumber empty) flowed into the next hop, which called .../incentiveCompensationParticipants?q=PersonNumber= with an EMPTY value. Oracle returned an unfiltered page and the xpath extracted the first record's ParticipantId (10000) — a real id belonging to a DIFFERENT person. Only a later coincidental block prevented downstream steps from acting on the wrong participant. Empirically confirmed in a shadow run CSV (row carried ParticipantId=10000 for a worker not in Oracle at all).
+**Trigger**: A worker missing from Oracle (resourceUsers miss → PersonNumber empty) flowed into the next hop, which called .../incentiveCompensationParticipants?q=PersonNumber= with an EMPTY value. Oracle returned an unfiltered page and the xpath extracted the first record's ParticipantId — a real id belonging to a DIFFERENT person. Only a later coincidental block prevented downstream steps from acting on the wrong participant. Empirically confirmed in a shadow run CSV (a row carried a real ParticipantId for a worker not in Oracle at all).
 **Pattern**: Never let a chained Oracle Fusion REST lookup fire with an empty predicate value: '?q=Field=' with empty RHS is NOT an error — Oracle returns a default page of ALL records and your extraction happily grabs someone else's ids. In multi-hop chains (user → participant → child rows), derive layered miss flags in the decision eval BEFORE trusting extracted ids: userNotFound = PersonNumber empty; participantNotFound = PersonNumber present AND ParticipantId empty; detailUnresolved = both present AND child lookup failed. Give each its own BlockedReason token so support can see WHICH layer missed. Empty path segments have the same class of problem: .../ParticipantDetails//child/... (empty id between slashes) fires a real HTTP call that 404s — wasted calls + log noise. Structural fix: short-circuit routing after each hop on the miss flag, or at minimum precedence-order the flags so a spurious downstream id can never be used.
 **Example**:
 ```xml
@@ -1116,10 +1116,10 @@ props['Calc_IsBlockedParticipantNotFound'] = (props['Calc_IsBlockedUserNotFound'
 **Promote to**: patterns.md
 **Status**: raw
 
-### [2026-07-09] Oracle Fusion Incentive Compensation write behaviors — verified live against a customer test environment
+### [2026-07-09] Oracle Fusion Incentive Compensation write behaviors — verified live against a test environment
 **Category**: HTTP
 **Trigger**: Five write-path unknowns flagged by review (method-override acceptance, empty-string date into DFF, POST response shape, prior-segment auto-close, merge-PATCH semantics) were all exercised by real scoped writes on 2026-07-01/07-08 and verified by next-run re-reads.
-**Pattern**: Verified against Oracle Fusion IC REST (fscmRestApi/resources/latest/incentiveCompensationParticipants): (1) DFF updates work as POST + header X-HTTP-Method-Override: PATCH to .../ParticipantDetails/{id}/child/participantDetailsDFF/{id} — accepted, returns 200 with a JSON echo; (2) DFF PATCH is a MERGE: only keys sent change, omitted keys are preserved — BUT on a freshly POSTed ParticipantDetail the DFF starts empty, so merge semantics cannot 'preserve' anything on the create path; (3) sending "" (empty string) for a date-valued DFF attribute (onLeaveEndDate) is ACCEPTED and clears/blanks the field — next-run read shows it empty, no 400; (4) POST create of a ParticipantDetail returns the new id at JSON path data/ParticipantDetailId (after cc:json-to-xml: root/data/ParticipantDetailId) — validate write success on presence of this echo, and Oracle error envelopes carry a top-level 'title' key (root/title after json-to-xml) even on HTTP 200, so scan for it; (5) POSTing a new ParticipantDetail AUTO-END-DATES the prior open segment — next-run child query with EndDate=null returned exactly ONE open row per worker (no MULTIPLE_OPEN), so no manual close is needed before create.
+**Pattern**: Verified against Oracle Fusion IC REST (fscmRestApi/resources/latest/incentiveCompensationParticipants): (1) DFF updates work as POST + header X-HTTP-Method-Override: PATCH to .../ParticipantDetails/{id}/child/participantDetailsDFF/{id} — accepted, returns 200 with a JSON echo; (2) DFF PATCH is a MERGE: only keys sent change, omitted keys are preserved — BUT on a freshly POSTed ParticipantDetail the DFF starts empty, so merge semantics cannot 'preserve' anything on the create path; (3) sending "" (empty string) for a date-valued DFF attribute (e.g. a leave-end-date segment) is ACCEPTED and clears/blanks the field — next-run read shows it empty, no 400; (4) POST create of a ParticipantDetail returns the new id at JSON path data/ParticipantDetailId (after cc:json-to-xml: root/data/ParticipantDetailId) — validate write success on presence of this echo, and Oracle error envelopes carry a top-level 'title' key (root/title after json-to-xml) even on HTTP 200, so scan for it; (5) POSTing a new ParticipantDetail AUTO-END-DATES the prior open segment — next-run child query with EndDate=null returned exactly ONE open row per worker (no MULTIPLE_OPEN), so no manual close is needed before create.
 **Example**:
 ```xml
 Success check after POST (json-to-xml'd): props['NewId'] = parts[0].xpath('root/data/ParticipantDetailId'); created = (NewId != ''). Error check after PATCH: props['ErrTitle'] = parts[0].xpath('root/title'); ok = (ErrTitle == '').
