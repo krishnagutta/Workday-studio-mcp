@@ -26,7 +26,7 @@ export function register(server) {
       '      \\t\\t\\t\\t<cc:workday-out-rest id="GetWorkers" routes-response-to="TODO_next"',
       '      \\t\\t\\t\\t  extra-path="@{intsys.reportService.getExtrapath(\'alias\')}"/>',
       '',
-      'TOP-LEVEL ELEMENTS WARNING (Studio schema rule confirmed INT999, INT999, INT999):',
+      'TOP-LEVEL ELEMENTS WARNING (Studio schema rule confirmed in multiple production builds):',
       'The following elements CANNOT appear inside steps_xml — they MUST be top-level',
       'elements placed directly inside <cc:assembly>, not inside <cc:steps>:',
       '  - cc:workday-out-rest',

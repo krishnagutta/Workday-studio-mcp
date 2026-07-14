@@ -33,7 +33,7 @@ export function register(server) {
       'BATCH RENAMES: call once per ID — do not batch multiple renames into one call.',
     ].join('\n'),
     {
-      project_name: z.string().describe('Project name, e.g. "INT999_Acquisition_PostProcessing"'),
+      project_name: z.string().describe('Project name, e.g. "INT999_Employee_Sync"'),
       old_id: z.string().describe('The existing step ID to rename, e.g. "AsyncMediation3"'),
       new_id: z.string()
         .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'IDs must start with a letter or underscore and contain only alphanumerics and underscores')

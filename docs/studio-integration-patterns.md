@@ -295,7 +295,7 @@ Inserting N new top-level elements anywhere inside `cc:assembly` shifts ALL subs
 
 A reference at `@mixed.95` BEFORE a 6-element deletion + 1-comment add becomes `@mixed.95 - 12 + 2 = @mixed.85`.
 
-**Concrete example (INT999 Canada — JobCreation flow removal):**
+**Concrete example (JobCreation flow removal from a live build):**
 
 ```xml
 <!-- BEFORE: 6-element JobCreation flow removed + 1 XML comment inserted -->
