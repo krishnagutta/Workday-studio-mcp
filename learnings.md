@@ -4,6 +4,8 @@ Append-only intake log. When Claude Code discovers a new Studio pattern, schema 
 
 Entries get promoted to `docs/studio-integration-patterns.md`, `src/tools/get-step-type-reference.mjs`, or `src/tools/validate-assembly.mjs` during periodic review.
 
+**This repo is public — generalize every entry.** No client integration IDs, project names, tenant or environment names, custom field names, or run/log identifiers. Use the placeholder conventions: `INT999` for integration IDs, `<TENANT>` for tenants, `Example` for project/field names. Describe provenance generically ("verified in a live run", "observed in a production build") — the technical pattern is the value, not where it came from.
+
 ---
 
 ## Entry format
@@ -151,7 +153,7 @@ Both paths converge at the final destination:
 
 ### [2026-05-06] Proxy-vs-Direct API: error handling chain shifts from response-handler to send-error path
 **Category**: Assembly
-**Trigger**: Ported MEX's "POST → AsyncMediation20 → AsyncMediation122 → AsyncMediation124 → CallDTA1" upsert recovery pattern into Canada's direct-Dayforce assembly. Wiring compiled fine, but on real Dayforce 400 errors (HR_Employee_DuplicateXRefCodeFound) the recovery never fired. Logs showed `BadRequestException` from `HttpRetryControl` going to `AsyncMediation12` (the HIR send-error handler) — never touching the response chain.
+**Trigger**: Ported a "POST → AsyncMediation20 → AsyncMediation122 → AsyncMediation124 → CallDTA1" upsert recovery pattern from one country build into another's direct-Dayforce assembly. Wiring compiled fine, but on real Dayforce 400 errors (HR_Employee_DuplicateXRefCodeFound) the recovery never fired. Logs showed `BadRequestException` from `HttpRetryControl` going to `AsyncMediation12` (the HIR send-error handler) — never touching the response chain.
 **Pattern**: When an integration moves from a proxy that wraps everything in HTTP 200 (e.g., Boomi `<ACCOUNT>-test.boomi.cloud/...`) to direct API calls returning real status codes (e.g., `cantrainNNN.dayforcehcm.com`), error handling shifts paths entirely.
 
 **Proxy era:** proxy returns 200 regardless of downstream outcome. Real error JSON is in the body. Studio's HTTP client never raises BadRequestException, so `cc:send-error` never fires. Errors are detected by parsing the body via `responsehandle.xsl` → setting `props['Error_Check']` → branching in the `routes-response-to` chain (e.g., `AsyncMediation20 → AsyncMediation122 → AsyncMediation124`). The `cc:send-error` handler on the wrapping async-mediation is effectively dead code.
@@ -249,7 +251,7 @@ Both paths converge at the final destination:
 
 ### [2026-05-06] Workday PECI event code "-R" suffix means Rescind, NOT Rehire
 **Category**: Other
-**Trigger**: During INT999 Canada planning, was about to wire HIR-R as if it meant "Hire Rehire" — would have produced a PATCH to set status Active, which is the wrong action. User corrected that HIR-R = "Hire Rescinded" (the hire never happened, employee never started) and TERM-R = "Termination Rescinded" (the termination is being undone, employee stays).
+**Trigger**: While planning a Dayforce PECI integration, was about to wire HIR-R as if it meant "Hire Rehire" — would have produced a PATCH to set status Active, which is the wrong action. User corrected that HIR-R = "Hire Rescinded" (the hire never happened, employee never started) and TERM-R = "Termination Rescinded" (the termination is being undone, employee stays).
 **Pattern**: The `-R` suffix on PECI event codes universally means **Rescind** — undo the prior action of the same root code. It does NOT mean "Rehire". A rehire is a fresh `HIR` event with `peci:Worker_Status/peci:Is_Rehire = '1'` — that's how routing distinguishes "first-time hire" from "rehire" within the same `HIR` event code.
 
 | Code | Name | Action when received |
@@ -265,7 +267,7 @@ Both paths converge at the final destination:
 | PGI / PGO | Pay Group In/Out | Pay group transfer |
 | PCO | Payroll Cutoff | Period close action |
 
-**Routing rule:** every PECI integration's `cc:route` block should have an explicit branch for each event code it handles, plus an `OTHER` fallback. Missing a code (e.g., TERM-R missing in INT999 Canada caused silent termination drops on rehired employees) means events fall through to OTHER which usually just logs and exits — Dayforce never gets the change.
+**Routing rule:** every PECI integration's `cc:route` block should have an explicit branch for each event code it handles, plus an `OTHER` fallback. Missing a code (e.g., a missing TERM-R branch caused silent termination drops on rehired employees) means events fall through to OTHER which usually just logs and exits — Dayforce never gets the change.
 
 **XSL implication:** HIR-R XSL emits a termination body (status=Inactive, termination reason). TERM-R XSL emits a re-activation body (status=Active, NOT a termination reason). Don't reuse TERM.xsl for TERM-R — the inversion is real.
 **Promote to**: patterns.md
@@ -274,7 +276,7 @@ Both paths converge at the final destination:
 
 ### [2026-05-06] @mixed positional XPath refs in assembly-diagram.xml shift by 2N when adding/removing top-level elements
 **Category**: Diagram
-**Trigger**: After removing the JobCreation flow from INT999 Canada (8 elements) and adding a comment, Studio loaded the diagram with multiple "floating" components and edges drawn from wrong source nodes. Specifically AsyncMediation12 looked disconnected because the diagram's `<source href="...@mixed.95"/>` (originally global-error-handler) now resolved to AsyncMediation12 itself.
+**Trigger**: After removing an 8-element sub-flow from an existing integration and adding a comment, Studio loaded the diagram with multiple "floating" components and edges drawn from wrong source nodes. Specifically AsyncMediation12 looked disconnected because the diagram's `<source href="...@mixed.95"/>` (originally global-error-handler) now resolved to AsyncMediation12 itself.
 **Pattern**: Many connection edges in `assembly-diagram.xml` use positional EMF XPath instead of id-based hrefs:
 ```
 <source href="assembly.xml#//@beans/@mixed.1/@mixed.75/@mixed.3"/>
@@ -719,7 +721,7 @@ Rationale: Studio shows all IDs flat in the palette. Without verb+object naming 
 
 ### [2026-06-09] rename_steps tool concept: atomic rename across assembly.xml AND assembly-diagram.xml
 **Category**: Diagram
-**Trigger**: Manually renaming a step ID in assembly.xml without updating the matching href in assembly-diagram.xml caused a scala.MatchError crash when Studio tried to open the diagram. The reverse (renaming in diagram but not assembly) causes the same crash. This happened twice during INT999 / INT999 work.
+**Trigger**: Manually renaming a step ID in assembly.xml without updating the matching href in assembly-diagram.xml caused a scala.MatchError crash when Studio tried to open the diagram. The reverse (renaming in diagram but not assembly) causes the same crash. This happened twice across two different builds.
 **Pattern**: Any ID rename in assembly.xml requires a matching update in assembly-diagram.xml. The diagram file references assembly element IDs via href attributes in three forms:
   1. visualProperties: <element href="assembly.xml#OldID"/>
   2. connections source/target: <source href="assembly.xml#OldID"/> / <target href="assembly.xml#OldID"/>
@@ -757,3 +759,416 @@ Until the tool exists: ALWAYS use studio-mcp write_integration_file to write bot
 **Promote to**: all
 **Status**: promoted
 **Promoted**: 2026-06-10
+
+### [2026-06-26] Removing top-level steps via raw Edit leaves dangling diagram references
+**Category**: Diagram
+**Trigger**: After deleting cc:local-out Call_GetWorkers and cc:local-in GetWorkers from assembly.xml via Edit (to wire a workday-out-rest + splitter pattern directly to DoGetWorkers), validate_assembly reported zero errors but assembly-diagram.xml still contained 15 dangling href references to the removed step IDs (element href, source href, target href, elements href).
+**Pattern**: When restructuring a plan_integration-scaffolded flow to inline the RaaS pattern (workday-out-rest + splitter directly to an async-mediation), the Call_X local-out and X local-in scaffold pieces become orphans. Deleting them via raw Edit removes them from assembly.xml cleanly, but assembly-diagram.xml retains href="assembly.xml#Call_X" references that Studio cannot resolve. validate_assembly does not currently inspect the diagram for dangling refs. Either (a) add a diagram dangling-ref check to validate_assembly, OR (b) provide a delete_assembly_step / remove_step tool that updates both files atomically, OR (c) document this gotcha in the workday-out-rest reference (since the RaaS pattern inherently bypasses the Call_X → X local-in indirection).
+**Example**:
+```xml
+&lt;!-- BEFORE: scaffolded chain with sub-flow indirection --&gt;
+&lt;cc:workday-in routes-to="Call_GetWorkers"/&gt;
+&lt;cc:local-out id="Call_GetWorkers" routes-response-to="Call_FindResource" endpoint="vm://INT/GetWorkers"/&gt;
+&lt;cc:local-in id="GetWorkers" routes-to="DoGetWorkers"/&gt;
+&lt;cc:async-mediation id="DoGetWorkers".../&gt;
+
+&lt;!-- AFTER: RaaS pattern bypasses the local-out/in pair --&gt;
+&lt;cc:workday-in routes-to="GetWorkersRaaS"/&gt;
+&lt;cc:workday-out-rest id="GetWorkersRaaS" routes-response-to="SplitWorkers" extra-path="..."/&gt;
+&lt;cc:splitter id="SplitWorkers"&gt;&lt;cc:sub-route routes-to="DoGetWorkers"/&gt;...&lt;/cc:splitter&gt;
+&lt;cc:async-mediation id="DoGetWorkers" routes-to="Call_FindResource".../&gt;
+
+&lt;!-- Diagram still has dangling: --&gt;
+&lt;element href="assembly.xml#Call_GetWorkers"/&gt;  (× 15 occurrences)
+```
+**Promote to**: validate-assembly.mjs
+**Status**: raw
+
+### [2026-06-26] plan_integration scaffolds diagram with dangling End{SubFlowName} refs
+**Category**: Diagram
+**Trigger**: Studio crashed with scala.MatchError on platform:/resource/.../assembly.xml#EndGetWorkers (eProxyURI) when opening the diagram of a freshly scaffolded INT999_O_Example_LOA project. Root cause: plan_integration generated 27 references in assembly-diagram.xml (9 visualProperties + 9 routesTo connections + 9 swimlanes elements, all named End{SubFlowName}) but never added any corresponding cc:* steps with those IDs to assembly.xml. Every single sub-flow scaffolded by plan_integration produces this drift.
+**Pattern**: For each sub-flow that plan_integration scaffolds, the assembly-diagram.xml gets three references to assembly.xml#End{SubFlowName} — but plan_integration's assembly.xml emission has no matching step IDs. This causes Studio's diagram editor to crash on open with scala.MatchError at com.workday.sh.sa.editor.assembly.impl.editparts.Factory.createEditPart line 19 — the EMF proxy URI fails to resolve. Fix: either (a) plan_integration should emit a sentinel step (e.g., a tiny cc:eval id="EndGetWorkers" with no expressions, or a cc:log id="EndGetWorkers" emitting a "sub-flow complete" message) for each sub-flow, OR (b) plan_integration should omit the End{X} visualProperties/connections/swimlane references entirely. Without either fix, every scaffold-then-open cycle crashes Studio.
+**Example**:
+```xml
+&lt;!-- ASSEMBLY-DIAGRAM.XML emits (× 9 sub-flows) --&gt;
+&lt;visualProperties x="350" y="360"&gt;
+  &lt;element href="assembly.xml#EndGetWorkers"/&gt;
+&lt;/visualProperties&gt;
+&lt;connections type="routesTo"&gt;
+  &lt;source href="assembly.xml#DoGetWorkers"/&gt;
+  &lt;target href="assembly.xml#EndGetWorkers"/&gt;
+&lt;/connections&gt;
+&lt;swimlanes ...&gt;
+  &lt;elements href="assembly.xml#EndGetWorkers"/&gt;
+&lt;/swimlanes&gt;
+
+&lt;!-- ASSEMBLY.XML emits NOTHING with id="EndGetWorkers" --&gt;
+&lt;!-- Studio crashes on diagram open with scala.MatchError --&gt;
+
+&lt;!-- WORKAROUND we applied: strip all 27 dangling End* refs from assembly-diagram.xml via regex --&gt;
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-26] cc:send-error elements cannot be referenced by ID in assembly-diagram.xml — must use @mixed XPath
+**Category**: Diagram
+**Trigger**: Studio crashed with scala.MatchError on platform:/resource/.../assembly.xml#GlobalErrorHandler (eProxyURI) even though cc:send-error id="GlobalErrorHandler" exists in assembly.xml and validate_assembly passes. Diagram refs assembly.xml#GlobalErrorHandler look correct by ID, but EMF cannot resolve them.
+**Pattern**: cc:send-error elements (including GlobalErrorHandler and each per-sub-flow XError) are NOT first-class routable steps in Studio's EMF model. They have an id="..." attribute that is meaningful for routes-to/send-error connections at runtime, but the diagram editor cannot resolve diagram href references to send-error elements by their named ID — the editor's Factory.createEditPart calls scala.MatchError on any unrecognized proxy. The original plan_integration scaffold worked around this by emitting opaque @mixed XPaths like assembly.xml#//@beans/@mixed.1/@mixed.75 — but those indices shift whenever any top-level step is added or removed, making them brittle. SAFEST PATTERN: omit send-error elements from the diagram entirely (no visualProperties, no connections, no swimlane elements). Send-error still works at runtime; the diagram just doesn't visualize the catch handler. This produces a stable diagram across assembly edits. If visualization of the global error handler is critical, the @mixed.N index must be recomputed every time assembly.xml's top-level structure changes.
+**Example**:
+```xml
+&lt;!-- BAD: works at runtime but crashes Studio diagram editor --&gt;
+&lt;visualProperties x="300" y="65"&gt;
+  &lt;element href="assembly.xml#GlobalErrorHandler"/&gt;
+&lt;/visualProperties&gt;
+
+&lt;!-- BAD-but-functional: brittle @mixed path that shifts with assembly edits --&gt;
+&lt;visualProperties&gt;
+  &lt;element href="assembly.xml#//@beans/@mixed.1/@mixed.75"/&gt;
+&lt;/visualProperties&gt;
+
+&lt;!-- SAFE: omit send-error from diagram entirely. Runtime unaffected. --&gt;
+&lt;!-- (no visualProperties, no connection, no swimlane elements entry) --&gt;
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-26] Canonical assembly-diagram.xml patterns for RaaS-driven integrations
+**Category**: Diagram
+**Trigger**: After multiple Studio diagram editor crashes (scala.MatchError on Call_GetWorkers, then EndGetWorkers, then DeliverErrorRouter, then GlobalErrorHandler), user manually fixed assembly-diagram.xml in Studio and shared the working version. Comparing the working diagram against my attempts surfaced five distinct Studio conventions I did not know about.
+**Pattern**: Canonical assembly-diagram.xml conventions for any plan_integration-scaffolded project that uses workday-out-rest + splitter + multiple sub-flows:
+
+1. cc:send-error elements (GlobalErrorHandler and per-async-mediation X-Error): MUST be referenced by @mixed XPath, NEVER by named id. Studio's diagram editor crashes on ID-based refs. The indices are arithmetic, not random: every top-level cc:async-mediation occupies 4 mixed positions in cc:assembly, so successive async-mediations are at @mixed.K, K+4, K+8, ... and each async-mediation's embedded cc:send-error is always at child @mixed.3. The top-level GlobalErrorHandler send-error sits at @mixed.{last_async_mediation_index + 2}. Pattern observed in a production build: GetWorkersError at @beans/@mixed.1/@mixed.19/@mixed.3, FindResourceError at @mixed.23/@mixed.3, FindParticipantError at @mixed.27/@mixed.3, ..., WriteLogError at @mixed.51/@mixed.3, GlobalErrorHandler at @mixed.53.
+
+2. Call_X (cc:local-out) → X (cc:local-in) dispatch connections should NOT be drawn in the diagram. The vm:// endpoint on the local-out implicitly routes; drawing the connection creates redundant diagonal arrows. Only emit: StartHere→GetWorkersRaaS (routesTo), GetWorkersRaaS→SplitWorkers (routesResponseTo), splitter-sub-route→DoGetWorkers, DoGetWorkers→Call_FindResource, the linear Call_X routes-response-to Call_X+1 chain, X→DoX (per sub-flow), DoXError→PutXError (per sub-flow via @mixed XPath), GlobalErrorHandler→DeliverError (via @mixed XPath).
+
+3. Splitter sub-route arrow source: use the @splitter.N/@subRoute.M XPath, NOT the splitter id. Pattern: <source href="assembly.xml#//@beans/@mixed.1/@splitter.0/@subRoute.0"/>. This anchors the arrow at the sub-route slot inside the splitter box, not the splitter as a whole.
+
+4. Two distinct nested-swimlane syntaxes — pick by content:
+   - Self-closing attribute form (parent has ONLY a nested child reference): <swimlanes ... elements="//@swimlanes.N"/>
+   - Container child-element form (parent has nested AND other elements inline): <swimlanes ...><elements href="assembly.xml#X"/><elements href="#//@swimlanes.N"/></swimlanes>
+   Note the URI fragment difference: attribute form uses //@swimlanes.N (no leading #), child element form uses #//@swimlanes.N.
+
+5. Outer Master swimlane composes the layout. Every Studio diagram needs a top-level vertical swimlane at the end with name="Master" orientation="VERTICAL" whose elements attribute lists every PARENT swimlane (not nested children). Example: <swimlanes x="-26" y="-287" name="Master" orientation="VERTICAL" elements="//@swimlanes.0 //@swimlanes.1 //@swimlanes.4 //@swimlanes.6 //@swimlanes.8 //@swimlanes.10 //@swimlanes.12 //@swimlanes.14 //@swimlanes.16 //@swimlanes.18"/>. The space-separated list references parents only; vertical children are reached through their parents.
+
+Each DoX and PutXError step has BOTH a top-level visualProperties block AND membership in its vertical child swimlane (not either/or).
+**Example**:
+```xml
+&lt;!-- send-error reference: USE @mixed XPath --&gt;
+&lt;visualProperties&gt;
+  &lt;element href="assembly.xml#//@beans/@mixed.1/@mixed.53"/&gt;
+&lt;/visualProperties&gt;
+&lt;connections type="routesTo"&gt;
+  &lt;source href="assembly.xml#//@beans/@mixed.1/@mixed.53"/&gt;
+  &lt;target href="assembly.xml#DeliverError"/&gt;
+&lt;/connections&gt;
+
+&lt;!-- send-error inside an async-mediation --&gt;
+&lt;connections type="routesTo"&gt;
+  &lt;source href="assembly.xml#//@beans/@mixed.1/@mixed.19/@mixed.3"/&gt;
+  &lt;target href="assembly.xml#PutGetWorkersError"/&gt;
+&lt;/connections&gt;
+
+&lt;!-- splitter sub-route arrow --&gt;
+&lt;connections type="routesTo"&gt;
+  &lt;source href="assembly.xml#//@beans/@mixed.1/@splitter.0/@subRoute.0"/&gt;
+  &lt;target href="assembly.xml#DoGetWorkers"/&gt;
+&lt;/connections&gt;
+
+&lt;!-- nested swimlane: self-closing attribute form --&gt;
+&lt;swimlanes x="30" y="320" name="RaaS Processing Sub-flow" elements="//@swimlanes.3" alignment="MIDDLE" labelAlignment="LEFT"/&gt;
+
+&lt;!-- nested swimlane: container form (Main Flow with inline contents AND nested sub-flow) --&gt;
+&lt;swimlanes x="30" y="140" name="Main Flow" alignment="MIDDLE" labelAlignment="LEFT"&gt;
+  &lt;elements href="assembly.xml#SplitWorkers"/&gt;
+  &lt;elements href="#//@swimlanes.2"/&gt;
+  &lt;elements href="assembly.xml#Call_FindResource"/&gt;
+&lt;/swimlanes&gt;
+
+&lt;!-- Master swimlane at end of file --&gt;
+&lt;swimlanes x="-26" y="-287" name="Master" orientation="VERTICAL" elements="//@swimlanes.0 //@swimlanes.1 //@swimlanes.4 //@swimlanes.6 //@swimlanes.8 //@swimlanes.10 //@swimlanes.12 //@swimlanes.14 //@swimlanes.16 //@swimlanes.18"/&gt;
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-26] cc:log does not accept condition attribute — use cc:cloud-log or compute status in cc:eval
+**Category**: Schema
+**Trigger**: Studio build reported "Attribute 'condition' is not allowed to appear in element 'cc:log'" (cvc-complex-type.3.2.2) on two cc:log steps that used condition="props['X'] != null" for conditional logging. validate_assembly did not catch this — Studio's full schema check did.
+**Pattern**: cc:log is for simple text/payload logging and does NOT support the `condition` attribute. Only cc:cloud-log accepts `condition` (e.g. `<cc:cloud-log condition="props['LogType']=='Info'" .../>`). For conditional discrimination via cc:log, compute a status prop via cc:eval first, then embed it in the log text using @{props['Status']}: e.g. `[INT999][@{props['Status']}] Employee_ID=...`. This produces one log line with a greppable status token, and works in all Studio assembly versions. validate_assembly should flag `condition` on cc:log as a schema error rather than waiting for the Studio build.
+**Example**:
+```xml
+&lt;!-- BAD: validate_assembly passes but Studio rejects --&gt;
+&lt;cc:log id="LogOk" condition="props['X'] != null"&gt;...&lt;/cc:log&gt;
+&lt;cc:log id="LogFail" condition="props['X'] == null"&gt;...&lt;/cc:log&gt;
+
+&lt;!-- GOOD: compute status, embed in single log --&gt;
+&lt;cc:eval id="SetStatus"&gt;
+  &lt;cc:expression&gt;props['Status'] = (props['X'] != null) ? 'OK' : 'FAIL';&lt;/cc:expression&gt;
+&lt;/cc:eval&gt;
+&lt;cc:log id="LogResult"&gt;
+  &lt;cc:log-message&gt;
+    &lt;cc:text&gt;[INT999][@{props['Status']}] X=@{props['X']}&lt;/cc:text&gt;
+  &lt;/cc:log-message&gt;
+&lt;/cc:log&gt;
+
+&lt;!-- ALSO GOOD: cc:cloud-log does support condition --&gt;
+&lt;cc:cloud-log condition="props['LogType']=='Info'" level="info" message="..." variable-name="cloud-log-content"/&gt;
+```
+**Promote to**: validate-assembly.mjs
+**Status**: raw
+
+### [2026-06-28] Each (Do{X} + Put{X}Error) pair in a sub-flow gets its own nested VERTICAL swimlane child
+**Category**: Diagram
+**Trigger**: When extending an existing sub-flow swimlane (e.g. ReadCurrentDetail Sub-flow) with an additional async-mediation + error router (DoReadDFF + PutReadDFFError), my first attempt was to add the new Do/PutError pair to the SAME existing nested vertical child swimlane that already held DoReadCurrentDetail + PutReadCurrentDetailError. User manually split them into a separate nested vertical swimlane to preserve the canonical "one boxed work unit per pair" visual.
+**Pattern**: Each cc:async-mediation that does substantive work (a Do{X}) plus its dedicated error router (Put{X}Error) MUST live in its own nested VERTICAL swimlane child of the parent sub-flow swimlane — even when multiple Do/PutError pairs belong to the same logical sub-flow. The parent swimlane lists MULTIPLE elements href="#//@swimlanes.N"/> references, one per vertical child. Studio renders each vertical child as a distinct boxed work unit; cramming pairs into a shared vertical child collapses them into one box and loses the visual hierarchy. Pattern example: ReadCurrentDetail Sub-flow (parent at swimlanes.11) contains ReadCurrentDetail local-in + ReadParticipantDetail http-out + ReadParticipantDetailDFF http-out + TWO nested vertical refs: swimlanes.12 (DoReadCurrentDetail + PutReadCurrentDetailError) AND swimlanes.23 (DoReadDFF + PutReadDFFError). The send-error connection for the new DoReadDFF uses @beans/@mixed.1/@mixed.N/@mixed.3 where N is the 1-indexed position of the new async-mediation in cc:assembly's direct children (for appended elements, N = 19 + 4*K where K is the count of additional async-mediations added after the initial scaffold).
+**Example**:
+```xml
+&lt;!-- Parent swimlane with TWO nested vertical children, one per Do/PutError pair --&gt;
+&lt;swimlanes x="30" y="1120" name="ReadCurrentDetail Sub-flow"&gt;
+  &lt;elements href="assembly.xml#ReadCurrentDetail"/&gt;
+  &lt;elements href="assembly.xml#ReadParticipantDetail"/&gt;
+  &lt;elements href="assembly.xml#ReadParticipantDetailDFF"/&gt;
+  &lt;elements href="#//@swimlanes.12"/&gt;
+  &lt;elements href="#//@swimlanes.23"/&gt;
+&lt;/swimlanes&gt;
+
+&lt;!-- First Do/PutError pair --&gt;
+&lt;swimlanes x="170" y="1135" name="Swimlane" orientation="VERTICAL"&gt;
+  &lt;elements href="assembly.xml#DoReadCurrentDetail"/&gt;
+  &lt;elements href="assembly.xml#PutReadCurrentDetailError"/&gt;
+&lt;/swimlanes&gt;
+
+&lt;!-- Second Do/PutError pair — SEPARATE vertical child --&gt;
+&lt;swimlanes x="644" y="1634" name="Swimlane" orientation="VERTICAL"&gt;
+  &lt;elements href="assembly.xml#DoReadDFF"/&gt;
+  &lt;elements href="assembly.xml#PutReadDFFError"/&gt;
+&lt;/swimlanes&gt;
+
+&lt;!-- send-error connection uses @mixed XPath for the new async-mediation --&gt;
+&lt;connections type="routesTo"&gt;
+  &lt;source href="assembly.xml#//@beans/@mixed.1/@mixed.95/@mixed.3"/&gt;
+  &lt;target href="assembly.xml#PutReadDFFError"/&gt;
+&lt;/connections&gt;
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-28] MVEL cannot resolve fully-qualified class references inside ternary expressions
+**Category**: MVEL
+**Trigger**: org.mvel.CompileException: unable to resolve property: java — thrown at runtime for every worker in DoBuildDecision when a cc:expression used a ternary with java.time.LocalDate.parse(...) as one branch: `props['X'] = cond ? java.time.LocalDate.parse(s) : null;`. The SAME call works at expression top-level (InitializeProperties uses `props['Current_Date'] = java.time.LocalDate.now()` successfully). The integration ran with status CompletedWithError; the BuildDecision send-error fired 7 times and no [Phase4b][DECISION] lines appeared.
+**Pattern**: MVEL's expression compiler treats fully-qualified Java class references (e.g. `java.time.LocalDate`, `java.time.temporal.ChronoUnit`) as identifier chains. When such a reference appears as the THEN or ELSE branch of a ternary `?:`, the parser tries to resolve `java` as a property in scope first (e.g. `props['java']`, a local variable, etc.) and throws `unable to resolve property: java` when it fails. At expression top-level (immediately after `props['X'] = `), the compiler correctly recognizes the package-class-method chain. FIX: wrap any `java.x.y.z.method(...)` call inside an `if (cond) { props['X'] = java.x.y.z.method(...); }` block instead of using it as a ternary branch. Each if-statement still fits in one cc:expression. ALSO: MVEL does not support C-style casts — `(long) props['X']` throws parse errors. Just call the method directly; autoboxing handles the long primitive parameter (e.g. `props['date'].minusDays(props['days'])` where props['days'] is a Long works fine).
+**Example**:
+```xml
+&lt;!-- BAD: throws "unable to resolve property: java" --&gt;
+&lt;cc:expression&gt;props['Calc_LeaveStartDate'] = props['Valid'] == 'true' ? java.time.LocalDate.parse(props['Iso']) : null;&lt;/cc:expression&gt;
+
+&lt;!-- BAD: MVEL has no C-style cast syntax --&gt;
+&lt;cc:expression&gt;props['Floor'] = props['Date'].minusDays((long) props['Days']);&lt;/cc:expression&gt;
+
+&lt;!-- GOOD: package-class-method chain at expression top-level inside if-body --&gt;
+&lt;cc:expression&gt;props['Calc_LeaveStartDate'] = null;&lt;/cc:expression&gt;
+&lt;cc:expression&gt;if (props['Valid'] == 'true') { props['Calc_LeaveStartDate'] = java.time.LocalDate.parse(props['Iso']); }&lt;/cc:expression&gt;
+
+&lt;!-- GOOD: drop the cast, rely on autoboxing --&gt;
+&lt;cc:expression&gt;props['Floor'] = props['Date'].minusDays(props['Days']);&lt;/cc:expression&gt;
+
+&lt;!-- GOOD: top-level works because `java` is the first token after `=` --&gt;
+&lt;cc:expression&gt;props['Current_Date'] = java.time.LocalDate.now();&lt;/cc:expression&gt;
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-28] CORRECTION — MVEL cannot resolve java.x.y.z anywhere except direct top-level RHS — if-bodies also fail
+**Category**: MVEL
+**Trigger**: After initial fix (wrap java.time.LocalDate.parse in if-body), the SAME error reappeared: org.mvel.CompileException: unable to resolve property: java — but this time the stack trace included org.mvel.ast.IfNode.getReducedValueAccelerated, proving that the body inside `if (cond) { props['X'] = java.time.LocalDate.parse(s); }` is compiled as a NESTED expression and fails class resolution the same as a ternary branch.
+**Pattern**: UPDATE to the earlier learning. MVEL's fully-qualified class resolution only works when the class reference is the IMMEDIATE RHS of an assignment at expression top-level — `props['X'] = java.time.LocalDate.now()`. Any wrapping context fails: ternary branches, if-bodies, while-bodies, parenthesized subexpressions. Even moving the call into an if-body does NOT help because MVEL compiles the body as its own nested ExecutableAccessor and re-runs identifier resolution without the package-resolution path.
+
+CORRECT FIX: NEVER guard a `java.x.y.z.method(...)` call with a conditional. Instead:
+1. Compute a 'safe' input via a string-only ternary (no java.x.y.z anywhere): `props['SafeInput'] = props['IsValid'] == 'true' ? props['RealInput'] : 'sentinel-value';`
+2. Call the java.x.y.z method UNCONDITIONALLY at top-level with the safe input: `props['Parsed'] = java.time.LocalDate.parse(props['SafeInput']);`
+3. Use a separate ternary on the validity flag to null out the sentinel result: `props['Real'] = props['IsValid'] == 'true' ? props['Parsed'] : null;`
+
+This works because step 2 has `java.time.LocalDate.parse(...)` as the immediate RHS of `props['X'] = ` — no nesting, no conditional. The parse call always runs (with a real value or sentinel), and the validity check filters the result afterward.
+
+Pattern applies to LocalDate.parse, ChronoUnit.DAYS.between, and any other fully-qualified Java static call. For ChronoUnit specifically: call unconditionally on the parsed (sentinel-safe) dates, then ternary the result against validity:
+`props['DaysOnLeaveParsed'] = java.time.temporal.ChronoUnit.DAYS.between(props['LeaveStartDateParsed'], props['Current_Date']);`
+`props['DaysOnLeave'] = props['LeaveStartIsoValid'] == 'true' ? props['DaysOnLeaveParsed'] : null;`
+**Example**:
+```xml
+&lt;!-- BAD (still fails — if-body is a nested expression context) --&gt;
+&lt;cc:expression&gt;if (props['IsValid'] == 'true') { props['Date'] = java.time.LocalDate.parse(props['Iso']); }&lt;/cc:expression&gt;
+
+&lt;!-- GOOD (3-step sentinel pattern) --&gt;
+&lt;cc:expression&gt;props['IsoSafe'] = props['IsValid'] == 'true' ? props['Iso'] : '1970-01-01';&lt;/cc:expression&gt;
+&lt;cc:expression&gt;props['DateParsed'] = java.time.LocalDate.parse(props['IsoSafe']);&lt;/cc:expression&gt;
+&lt;cc:expression&gt;props['Date'] = props['IsValid'] == 'true' ? props['DateParsed'] : null;&lt;/cc:expression&gt;
+
+&lt;!-- For ChronoUnit, same pattern but the parsed dates from above are already safe --&gt;
+&lt;cc:expression&gt;props['DaysParsed'] = java.time.temporal.ChronoUnit.DAYS.between(props['LeaveStartDateParsed'], props['Current_Date']);&lt;/cc:expression&gt;
+&lt;cc:expression&gt;props['Days'] = props['IsValid'] == 'true' ? props['DaysParsed'] : null;&lt;/cc:expression&gt;
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-28] VERIFIED — MVEL 1.3 in Studio: avoid java.time static methods in per-message contexts
+**Category**: MVEL
+**Trigger**: A per-message decision eval failed 3 times with org.mvel.CompileException unable to resolve property java — across ternaries, if-bodies, and sentinel-pattern top-level usages of java.time.LocalDate.parse. Verified-working fix removed all java.time static calls from per-message contexts and used instance methods on Current_Date plus ISO string compareTo. Serverlog now shows 7/7 workers with successful DECISION lines, zero errors.
+**Pattern**: Workday Studio runs MVEL 1.3 per official docs. java.time.LocalDate.now() works in InitializeProperties bootstrap context but java.time.LocalDate.parse and java.time.temporal.ChronoUnit.DAYS.between fail in per-message contexts even at expression top-level. The fix is to never call java.x.y.staticMethod in per-message evals: store a LocalDate in props in InitializeProperties using the one bootstrap-safe call, then use only instance methods on that LocalDate (props['Current_Date'].minusDays(N).toString()) plus YYYY-MM-DD ISO string comparison (compareTo gives chronological order). For complex date parsing use the canonical Workday pattern new java.text.SimpleDateFormat("yyyy-MM-dd").parse(s) returning java.util.Date. For anything more complex than comparisons do the math in XSLT with xs:date and xs:dayTimeDuration. SUPERSEDES the two earlier MVEL learnings logged 2026-06-28 about if-body wrapping and sentinel-pattern — those were unverified theories that proved wrong.
+**Example**:
+```xml
+BAD pattern (fails everywhere in per-message contexts): props['Date'] = java.time.LocalDate.parse(props['Iso']); GOOD pattern: props['TodayIso'] = props['Current_Date'].toString(); props['CapFloorIso'] = props['Current_Date'].minusDays(props['MaxAge']).toString(); props['IsAbove'] = props['LeaveStartIso'].compareTo(props['CapFloorIso']) less-than-zero ? 'true' : 'false'
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-06-30] Consolidated single-document logging: accumulate-then-store-once across a splitter
+**Category**: Assembly
+**Trigger**: A splitter that logs per worker produced N separate output HTML documents (7 workers → 7 files) instead of one consolidated document, because the per-worker mediation did cc:store(createDocumentReference) + a deliver (local-out to PutIntegrationMessage) INSIDE the splitter loop, materializing one document per element.
+**Pattern**: To emit ONE consolidated output document for a splitter processing N elements, split the responsibilities: (1) PER ELEMENT — the per-worker step only APPENDS to a shared run-scoped variable via cc:cloud-log variable-name="cloud-log-content" (cc:cloud-log appends across all invocations into the same variable); no cc:store and no deliver inside the loop. (2) ONCE AT END OF RUN — a separate sub-flow does a single cc:store(createDocumentReference="true") of that variable plus a single deliverable PutIntegrationMessage. Wire the end-of-run sub-flow off the upstream data call's routes-response-to (e.g. the RAAS local-out): routes-response-to fires only AFTER the entire downstream request path — including the terminal splitter draining every element — completes, which is exactly "store once after the split finishes." Runtime-verified in a live run (server log: status Completed, 0 errors). VERIFICATION SIGNATURE in the server log: cc:cloud-log/cc:log markers ('[WriteLog]') == worker count, all preceding exactly one 'Calling PutIntegrationMessage within StoreStep' and one consolidated document title, plus exactly one end-of-run cc:log marker ('[RunComplete]'). DIFFERENTIAL: the broken pre-fix run shows N (=7) StoreStep PutIntegrationMessage deliveries interleaved one-per-worker; the fixed run shows exactly 1. TWO CAVEATS for whoever verifies this next: (a) do NOT grep the per-worker deliver's element id (e.g. 'PutWorkerLogMessage') to prove the fix — assembly element ids are not emitted at this log level, so that token is 0 in BOTH broken and fixed runs; count the framework-level 'Calling PutIntegrationMessage within StoreStep' lines (N vs 1) instead. (b) studio-mcp parse_server_log does not surface cc:log / cc:cloud-log lines (xslt_messages.count=0), so verify with direct grep of the raw server log, not the parsed summary.
+**Example**:
+```xml
+<![CDATA[<!-- PER WORKER (inside splitter): append only, no store, no deliver -->
+<cc:async-mediation id="DoWriteLog" handle-downstream-errors="true">
+  <cc:steps>
+    <cc:cloud-log id="CloudLogWorkerResult" level="info"
+        message="@{props['CloudLog_Message']}"
+        message-details="@{props['CloudLog_Details']}"
+        reference-id="props['Employee_ID']"
+        variable-name="cloud-log-content"/>   <!-- APPENDS to shared run-scoped var -->
+  </cc:steps>
+</cc:async-mediation>
+
+<!-- end-of-run store-once, fired AFTER the splitter drains via routes-response-to -->
+<cc:local-out id="Call_GetWorkersRAAS" store-message="none"
+    routes-response-to="Call_StoreRunLog"
+    endpoint="vm://INT999_O_Example_LOA/GetWorkersRAAS"/>
+...
+<cc:async-mediation id="DoStoreRunLog" routes-to="PutRunLogMessage">
+  <cc:steps>
+    <cc:store id="StoreRunLogDoc" output="variable" output-variable="run-log-doc-ref"
+        input="variable" input-variable="cloud-log-content"
+        createDocumentReference="true" expiresIn="P180D"
+        title="INT999_LOA_Reconciliation_@{props['Current_Date']}.html"/>
+  </cc:steps>
+</cc:async-mediation>
+<cc:local-out id="PutRunLogMessage" endpoint="vm://wcc/PutIntegrationMessage">
+  <cc:set name="is.document.variable.name" value="'run-log-doc-ref'"/>
+  <cc:set name="is.document.deliverable" value="'true'"/>
+</cc:local-out>]]>
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] MVEL 1.3.13: a semicolon INSIDE a string literal fails the entire deploy with [Error: unterminated literal]
+**Category**: MVEL
+**Trigger**: A deploy failed on an implementation tenant with 'Error compiling expression … reason: Failed to compile: [Error: unterminated literal] [Near: { … ops[Calc_ExampleField] + … }]'. Every launch died at collection deploy; looked like a data problem (all employees failing) but was a static compile error. Culprit: a cc:expression building CloudLog_Details contained the string literal '; Oracle currently has them as ' — the semicolon inside the quotes.
+**Pattern**: Studio's bundled MVEL 1.3.13 treats ';' as a statement separator EVEN INSIDE single-quoted string literals. Any `;` in a string literal ('a; b', '; b', 'b; c' — leading, middle, anywhere) fails compilation of that expression, which fails the whole assembly deploy. Parens and brackets inside strings are FINE ('a (b', ' [Technical: x' all compile). Fix: replace in-string semicolons with a dash or period. Verified by minimal probes against Studio's own jar (mvel-1.3.13-workday.12.jar) and by the subsequent successful deploy. PREVENTION RECIPE (verified): before deploy, extract every cc:expression text + choose-route/@expression + cc:set/@value with ElementTree, then compile each with org.mvel.MVEL.compileExpression() using the jar at /Applications/WorkdayStudio/Eclipse.app/Contents/Eclipse/plugins/com.workday.wtp.cloud.runtime.a_*/script/lib/mvel-1.3.13-workday.*.jar — it reports the exact failing expression with [Near:] context. validate_assembly does NOT catch this (checks XML/routing only). KNOWN BLIND SPOT of the offline check: it compiles fully-qualified java.x.y.z references fine, but Studio's per-message runtime fails to RESOLVE them (see the java.time per-message learning) — offline compile success does not clear FQCN usage.
+**Example**:
+```xml
+BAD (fails whole deploy): props['x'] = 'a' + '; b';   GOOD: props['x'] = 'a' + ' - b';   Offline check: java -cp mvel-1.3.13-workday.12.jar:. CompileTest exprs/  -> "FAIL expr_160.txt :: [Error: unterminated literal]"
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-07-09] Read the message body as a string in cc:eval with parts[0].getText() — toString() returns the object handle
+**Category**: MVEL
+**Trigger**: A run-summary eval needed the aggregated CSV body to count decision tokens. props['Body'] = parts[0].toString() returned 'com.capeclear.assembly.impl.MessageAdapterImpl@12feeaa6' (the object handle), so every count was 0. Diagnosed by javap on capeconnect-esbcore_2.12.jar: MessageAdapterImpl exposes public String getText().
+**Pattern**: In cc:eval, parts[0] is a com.capeclear.assembly.impl.MessageAdapterImpl. To get the current message payload as a String use parts[0].getText() (null-guard it). parts[0].toString() gives the object identity string, NOT the content — and it fails silently (string ops run happily against the handle text). Runtime-verified: token counting over an aggregated CSV body worked immediately after switching to getText() (RunComplete SUMMARY showed correct Rows/NOOP/Blocked counts).
+**Example**:
+```xml
+BAD: props['Calc_CsvBody'] = (parts[0] == null) ? '' : parts[0].toString();  -> 'MessageAdapterImpl@12feeaa6'
+GOOD: props['Calc_CsvBody'] = (parts[0] == null || parts[0].getText() == null) ? '' : parts[0].getText();
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] cc:xslt-plus binds props to same-named xsl:param — but only String-typed props; object-typed props bind EMPTY
+**Category**: XSLT
+**Trigger**: A CSV row transform declared &lt;xsl:param name="Current_Date"/&gt; and the column came out blank in every delivered row, even though [RunStart] logged Current_Date=2026-07-01 correctly via @{props['Current_Date']}. The prop held a java.time.LocalDate object (from LocalDate.now()), not a String.
+**Pattern**: cc:xslt-plus auto-binds props to same-named xsl:param, but ONLY props whose value is a real java.lang.String. Object-typed props (LocalDate, Long, etc.) bind as EMPTY in the XSL — and the bug is masked because @{props['x']} interpolation in cc:log happily renders the object's toString(). Even MVEL 1.3's x.toString() can retain non-String typing in props. Reliable coercion: props['y'] = '' + props['x']; then pass y to the XSL. Runtime-verified: the blank run_timestamp CSV column populated after switching the XSL param to a prop set via ('' + Current_Date).
+**Example**:
+```xml
+BAD: props['Current_Date'] = java.time.LocalDate.now();  + &lt;xsl:param name="Current_Date"/&gt;  -> param binds empty
+GOOD: props['Csv_RunDate'] = ('' + props['Current_Date']);  + &lt;xsl:param name="Csv_RunDate"/&gt;  -> '2026-07-09'
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-07-09] RaaS prompt parameters via extra-path query string on cc:workday-out-rest — verified working format
+**Category**: HTTP
+**Trigger**: A report on a prompted data source (Leave of Absence Outstanding by Date Range) needed Organizations + a rolling 90-day date window at RaaS call time; hardcoded report defaults went stale (fixed End_Date silently excluded all future leave events).
+**Pattern**: Append prompt parameters to the report alias path: extra-path="@{intsys.reportService.getExtrapath('ALIAS')}@{props['Calc_RaasParams']}" where Calc_RaasParams is built in InitializeProperties. Verified working elements: (1) prompt names are the report's 'Label For Prompt XML Alias' values (e.g. Start_Date, End_Date, Include_Subordinate_Organizations); (2) org prompts accept WID via the 'Name!WID=' form: Organizations!WID=<the org WID>; (3) PLAIN ISO dates ('2026-04-10') are accepted — the browser-captured -07:00 TZ suffix is not required; (4) rolling windows computed with instance methods: '' + props['Current_Date'].minusDays(90); (5) make the whole param string conditional on a launch attribute so an empty attribute degrades to the bare alias path (report defaults take over). Runtime-verified: RunStart logged the assembled params and the returned population demonstrably honored the URL window over the report's stored defaults (rows whose dates only qualify under the URL window were present). Ampersands are &amp;amp; in the XML source; '!' needs no escaping.
+**Example**:
+```xml
+props['Calc_RaasParams'] = (props['RaasOrganizationsWID'] == null || props['RaasOrganizationsWID'].toString().trim() == '') ? '' : ('?Organizations!WID=' + props['RaasOrganizationsWID'].toString().trim() + '&amp;Include_Subordinate_Organizations=1&amp;Start_Date=' + props['Current_Date'].minusDays(90) + '&amp;End_Date=' + props['Current_Date']);
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] Oracle REST with an EMPTY query predicate returns arbitrary records — guard each lookup hop on the prior hop's result
+**Category**: HTTP
+**Trigger**: A worker missing from Oracle (resourceUsers miss → PersonNumber empty) flowed into the next hop, which called .../incentiveCompensationParticipants?q=PersonNumber= with an EMPTY value. Oracle returned an unfiltered page and the xpath extracted the first record's ParticipantId (10000) — a real id belonging to a DIFFERENT person. Only a later coincidental block prevented downstream steps from acting on the wrong participant. Empirically confirmed in a shadow run CSV (row carried ParticipantId=10000 for a worker not in Oracle at all).
+**Pattern**: Never let a chained Oracle Fusion REST lookup fire with an empty predicate value: '?q=Field=' with empty RHS is NOT an error — Oracle returns a default page of ALL records and your extraction happily grabs someone else's ids. In multi-hop chains (user → participant → child rows), derive layered miss flags in the decision eval BEFORE trusting extracted ids: userNotFound = PersonNumber empty; participantNotFound = PersonNumber present AND ParticipantId empty; detailUnresolved = both present AND child lookup failed. Give each its own BlockedReason token so support can see WHICH layer missed. Empty path segments have the same class of problem: .../ParticipantDetails//child/... (empty id between slashes) fires a real HTTP call that 404s — wasted calls + log noise. Structural fix: short-circuit routing after each hop on the miss flag, or at minimum precedence-order the flags so a spurious downstream id can never be used.
+**Example**:
+```xml
+props['Calc_IsBlockedUserNotFound'] = (props['PersonNumber'] == null || props['PersonNumber'] == '') ? 'true' : 'false';
+props['Calc_IsBlockedParticipantNotFound'] = (props['Calc_IsBlockedUserNotFound'] == 'false' &amp;&amp; (props['ParticipantId'] == null || props['ParticipantId'] == '')) ? 'true' : 'false';
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] Oracle Fusion Incentive Compensation write behaviors — verified live against a customer test environment
+**Category**: HTTP
+**Trigger**: Five write-path unknowns flagged by review (method-override acceptance, empty-string date into DFF, POST response shape, prior-segment auto-close, merge-PATCH semantics) were all exercised by real scoped writes on 2026-07-01/07-08 and verified by next-run re-reads.
+**Pattern**: Verified against Oracle Fusion IC REST (fscmRestApi/resources/latest/incentiveCompensationParticipants): (1) DFF updates work as POST + header X-HTTP-Method-Override: PATCH to .../ParticipantDetails/{id}/child/participantDetailsDFF/{id} — accepted, returns 200 with a JSON echo; (2) DFF PATCH is a MERGE: only keys sent change, omitted keys are preserved — BUT on a freshly POSTed ParticipantDetail the DFF starts empty, so merge semantics cannot 'preserve' anything on the create path; (3) sending "" (empty string) for a date-valued DFF attribute (onLeaveEndDate) is ACCEPTED and clears/blanks the field — next-run read shows it empty, no 400; (4) POST create of a ParticipantDetail returns the new id at JSON path data/ParticipantDetailId (after cc:json-to-xml: root/data/ParticipantDetailId) — validate write success on presence of this echo, and Oracle error envelopes carry a top-level 'title' key (root/title after json-to-xml) even on HTTP 200, so scan for it; (5) POSTing a new ParticipantDetail AUTO-END-DATES the prior open segment — next-run child query with EndDate=null returned exactly ONE open row per worker (no MULTIPLE_OPEN), so no manual close is needed before create.
+**Example**:
+```xml
+Success check after POST (json-to-xml'd): props['NewId'] = parts[0].xpath('root/data/ParticipantDetailId'); created = (NewId != ''). Error check after PATCH: props['ErrTitle'] = parts[0].xpath('root/title'); ok = (ErrTitle == '').
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] Consolidated CSV across a splitter: per-row cc:xslt-plus + cc:aggregator with header-text — survives vm-hop chains
+**Category**: Assembly
+**Trigger**: Needed one delivered CSV (one row per split element, column header, Excel-ready) alongside the existing consolidated HTML cloud-log. Unknowns: whether cc:aggregator's last-message detection survives each row traversing a chain of vm:// local-out/local-in sub-flows, and how to get a header row. First shadow run answered all of them.
+**Pattern**: Runtime-verified recipe (companion to the 2026-06-30 accumulate-then-store-once entry, which covers the cloud-log/HTML variant): (1) per row, a cc:xslt-plus emits ONE CSV line, starting with &amp;#10; so collected rows stack under the header; params are auto-bound String props; RFC-4180-quote every field (wrap in quotes, double internal quotes) and space-prefix leading =+-@ to block Excel formula injection; (2) rows route to a TOP-LEVEL cc:aggregator with force-batch-on-last-message="true", cc:size-batch-strategy batch-size="-1", and cc:message-content-collater with cc:header-text holding the column-header line; (3) on release: cc:store output-mimetype="text/csv" with contentDisposition attachment + title, then deliver via vm://wcc/PutIntegrationMessage with is.document.variable.name/is.document.deliverable. VERIFIED: the batch context survives rows that each traverse 6+ vm:// request-response hops before reaching the aggregator (178-row live runs, single CSV + single HTML both delivered every run); the aggregator chain can then route onward (routes-response-to) into the HTML store-once sub-flow so BOTH artifacts deliver from one run.
+**Example**:
+```xml
+&lt;cc:aggregator id="CollectCsvRows" routes-to="DoFinalizeCsv" force-batch-on-last-message="true"&gt;&lt;cc:size-batch-strategy batch-size="-1"/&gt;&lt;cc:message-content-collater&gt;&lt;cc:header-text&gt;run_timestamp,Employee_ID,...&lt;/cc:header-text&gt;&lt;/cc:message-content-collater&gt;&lt;/cc:aggregator&gt;
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] @mixed positional index formula for assembly-diagram.xml refs: index = 2 x (element position among assembly children) + 1
+**Category**: Diagram
+**Trigger**: Needed to reference a top-level cc:send-error (GlobalErrorHandler) in a regenerated diagram — send-errors cannot be referenced by id (existing learning), only by //@beans/@mixed.1/@mixed.N. Derived N by reverse-engineering a Studio-generated diagram: its @mixed.19 mapped to DoGetWorkers, which was the 10th element (0-based position 9) of cc:assembly → 2*9+1=19. Confirmed against multiple other refs.
+**Pattern**: EMF counts the assembly's @mixed feature as interleaved [whitespace-text, element, whitespace-text, element, ...], so with pretty-printed XML every element at 0-based position k among cc:assembly's child ELEMENTS has mixed index 2k+1. To compute: parse assembly.xml, take the ordered list of cc:assembly's direct children, find your element's position k, ref = assembly.xml#//@beans/@mixed.1/@mixed.{2k+1}. This makes positional refs COMPUTABLE instead of copied-and-prayed. Corollary (matches the earlier 'shift by 2N' learning): inserting/removing a top-level element before position k shifts the index by 2 per element — so regenerate the ref (or the whole diagram) after structural edits. Rendered correctly in Studio: the computed ref placed GlobalErrorHandler with coordinates and inside a named swimlane, with its routesTo connection drawn.
+**Example**:
+```xml
+children = list(assembly_element); k = children.index(target); ref = f"assembly.xml#//@beans/@mixed.1/@mixed.{2*k+1}"
+```
+**Promote to**: all
+**Status**: raw
+
+### [2026-07-09] Diagram legibility: vm:// local-out/local-in hops are never drawn — insert adjacent local-outs to eliminate cross-canvas arrows
+**Category**: Diagram
+**Trigger**: Two route sub-routes targeted steps in distant regions (a shared terminator mediation and a patch-entry local-out), producing canvas-crossing arrows that no repositioning could fix — one target had multiple far-apart feeders, so SOME arrow was always long.
+**Pattern**: Studio draws connections only for routes-to / routes-response-to; vm:// local-out → local-in pairs are logical links with NO arrow. So when a step has multiple distant feeders, give EACH feeder its own small cc:local-out placed right beside it, all pointing at one vm endpoint whose cc:local-in routes to the real target: the drawn arrows become tiny feeder→local-out hops and the long spans vanish into the invisible vm link. Flow semantics are unchanged (same request-response vm pattern the assembly already uses between sub-flows; store-message="none", no routes-response-to on the fan-in local-outs). Cost: two extra elements per distant feeder. This is a deliberate assembly refactor for readability — name the local-outs by intent (Call_Phase5Skip, Call_Phase5Done → vm://.../Phase5NoOp). Also verified while doing this: swimlane MEMBERSHIP can override a member's explicit x/y during render — keep free-floating positioned nodes OUT of swimlane elements lists if their coordinates must stick.
+**Example**:
+```xml
+&lt;cc:local-out id="Call_Phase5Skip" store-message="none" endpoint="vm://INT/Phase5NoOp"/&gt; (placed beside feeder A)
+&lt;cc:local-out id="Call_Phase5Done" store-message="none" endpoint="vm://INT/Phase5NoOp"/&gt; (placed beside feeder B)
+&lt;cc:local-in id="Phase5NoOp" routes-to="DoPhase5NoOpTerminator"/&gt;
+```
+**Promote to**: patterns.md
+**Status**: raw
+
+### [2026-07-09] REFINEMENT to java.time per-message rule: bootstrap-context (InitializeProperties) tolerates FQCN even inside ternary branches
+**Category**: MVEL
+**Trigger**: Timezone-pinned Current_Date was implemented as a TERNARY whose branches both contain fully-qualified java.time calls — including a nested one: (tz empty) ? java.time.LocalDate.now() : java.time.LocalDate.now(java.time.ZoneId.of(tz)). Per the 2026-06-28 VERIFIED learning this shape fails in per-message contexts; it was deployed in the bootstrap InitializeProperties eval and executed the ZoneId branch successfully in three consecutive live runs (RunStart logged the correct tz-pinned date each time).
+**Pattern**: The 2026-06-28 rule ('avoid java.time statics in per-message contexts') stands unchanged for per-message evals — a per-message LocalDate.parse() inside a ternary was caught pre-deploy today ONLY because the rule was in this file (offline MVEL compile passes on FQCNs; the failure is Studio's runtime resolution, so the compile-check recipe cannot catch it — grep per-message evals for 'java.' as a separate review step). NEW data point: in the run-scoped bootstrap context (InitializeProperties, executed once per run), FQCN java.time calls work even nested inside ternary branches and as method arguments (ZoneId.of inside now()). So the practical rule: bootstrap eval = FQCN allowed (still keep it simple); per-message eval = NO FQCN anywhere, use instance methods on objects already stored in props (e.g. build an arbitrary LocalDate from an ISO string without parse(): Current_Date.withDayOfMonth(1).withYear(Integer.parseInt(iso.substring(0,4))).withMonth(...).withDayOfMonth(...) — java.lang simple names like Integer/Long resolve fine per-message, verified in production).
+**Example**:
+```xml
+Per-message safe date construction from ISO string (no FQCN): props['EpStartDate'] = props['Current_Date'].withDayOfMonth(1).withYear(Integer.parseInt(props['Iso'].substring(0, 4))).withMonth(Integer.parseInt(props['Iso'].substring(5, 7))).withDayOfMonth(Integer.parseInt(props['Iso'].substring(8, 10)));
+```
+**Promote to**: all
+**Status**: raw
