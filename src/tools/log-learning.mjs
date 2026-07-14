@@ -35,8 +35,15 @@ Describe provenance generically ("verified in a live run", "observed in a produc
     async ({ title, category, trigger, pattern, example, promote_to }) => {
       const date = new Date().toISOString().slice(0, 10);
 
-      // Public repo: flag entries that look like they carry client-specific identifiers.
-      const CLIENT_ID_RE = /\bINT(?!999)\d{3}[A-Za-z]?\b|\btenant\s+[a-z][a-z0-9-]*\d[a-z0-9-]*\b/;
+      // Public repo: flag entries that look like they carry client-specific identifiers —
+      // integration IDs, tenant-like tokens, vendor-cloud environment hostnames, email addresses.
+      const CLIENT_ID_RE = new RegExp([
+        String.raw`\bINT(?!999)\d{3}[A-Za-z]?\b`,
+        String.raw`\btenant\s+[a-z][a-z0-9-]*\d[a-z0-9-]*\b`,
+        String.raw`\b[a-z0-9-]+\.boomi\.cloud\b`,
+        String.raw`\b[a-z]*train\d+\.dayforcehcm\.com\b`,
+        String.raw`\b[A-Za-z0-9._%+-]+@(?!example\.)[A-Za-z0-9-]+\.[A-Za-z]{2,}\b`,
+      ].join('|'));
       const suspect = [title, trigger, pattern, example ?? '']
         .some((s) => CLIENT_ID_RE.test(s));
 

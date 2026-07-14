@@ -1390,7 +1390,7 @@ RAAS (Report as a Service) is the dominant pattern for reading bulk data FROM Wo
 
   <!-- WID-bound: portable across report renames -->
   <cloud:report-alias description="Location tree" name="INT999_Locations">
-    <cloud:report-reference description="Location tree" type="WID">0408aa8e712a0101c0b44d0d3d2a2e9b</cloud:report-reference>
+    <cloud:report-reference description="Location tree" type="WID">55555555eeeeeeee66666666ffffffff</cloud:report-reference>
   </cloud:report-alias>
 </cloud:report-service>
 ```
@@ -1512,11 +1512,11 @@ Custom report calls in Studio always use `cc:workday-out-rest` + `cloud:report-a
 
 <!-- CORRECT: REST via cloud:report-alias (ALL custom reports use this) -->
 <cloud:report-service name="INT999_Reports">
-  <cloud:report-alias description="TBR active employees" name="INT999_TBR_Active_Employees"/>
+  <cloud:report-alias description="Active employees" name="INT999_Active_Employees"/>
 </cloud:report-service>
 
 <cc:workday-out-rest id="GetWDWorkersRAAS" routes-response-to="CountWDWorkers"
-  extra-path="@{intsys.reportService.getExtrapath('INT999_TBR_Active_Employees')}"/>
+  extra-path="@{intsys.reportService.getExtrapath('INT999_Active_Employees')}"/>
 ```
 
 The response is `wd:Report_Data/wd:Report_Entry` directly with no SOAP envelope. Call `get_step_type_reference('workday-out-rest')` before writing any RAAS step to confirm the current alias and filter syntax.
