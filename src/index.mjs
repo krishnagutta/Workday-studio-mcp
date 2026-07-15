@@ -31,7 +31,7 @@ import { register as registerRenameSteps } from './tools/rename-steps.mjs';
 
 const server = new McpServer({
   name: 'studio-file-mcp',
-  version: '1.2.0',
+  version: '1.3.0',
 });
 
 // File navigation
