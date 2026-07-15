@@ -103,12 +103,14 @@ export function register(server) {
 
       // ── Validate ───────────────────────────────────────────────────────────
 
-      let validation = null;
+      let issues = [];
       try {
-        validation = await validateAssembly(assemblyPath);
+        issues = validateAssembly(assemblyResult.updated, wsDir, diagramResult.updated);
       } catch (e) {
-        validation = { errors: [], warnings: [], error: e.message };
+        issues = [{ severity: 'WARNING', code: 'VALIDATION_FAILED', message: e.message }];
       }
+      const vErrors   = issues.filter(i => i.severity === 'ERROR');
+      const vWarnings = issues.filter(i => i.severity !== 'ERROR');
 
       return successResponse({
         renamed: { from: old_id, to: new_id },
@@ -116,9 +118,9 @@ export function register(server) {
         diagram_replacements: diagramResult.count,
         assembly_backup: assemblyBackup,
         diagram_backup: diagramBackup,
-        validation_errors:   validation?.errors   ?? [],
-        validation_warnings: validation?.warnings  ?? [],
-        validation_clean: (validation?.errors?.length ?? 0) === 0,
+        validation_errors:   vErrors,
+        validation_warnings: vWarnings,
+        validation_clean: vErrors.length === 0,
       });
     },
   );
