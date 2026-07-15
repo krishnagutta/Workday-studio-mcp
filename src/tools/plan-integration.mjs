@@ -297,7 +297,7 @@ function buildLaunchParamStubs(raasReports) {
 
 // ─── assembly.xml skeleton ────────────────────────────────────────────────────
 
-function buildAssemblyXml(projectName, subFlows, designBrief) {
+export function buildAssemblyXml(projectName, subFlows, designBrief) {
   const n = subFlows.length;
   const lines = [];
 
@@ -386,21 +386,22 @@ function buildAssemblyXml(projectName, subFlows, designBrief) {
 // assembly.xml has NO XML comments (by design), so every element is at an odd
 // @mixed index:  element at 1-based position P → @mixed.(2P-1)
 //
-// Direct children of cc:assembly in generation order:
+// Direct children of cc:assembly in generation order. Each sub-flow contributes
+// exactly TWO top-level elements (local-in + async-mediation); the send-error
+// lives INSIDE the async-mediation, and there is no End{SF} terminal element.
 //   P=1        workday-in StartHere
 //   P=2..1+N   local-out Call{SF[0..N-1]}
-//   P=2+N+3*i  local-in  SF[i]
-//   P=3+N+3*i  async-med Do{SF[i]}
-//   P=4+N+3*i  note      End{SF[i]}
-//   P=2+4N     send-error GlobalErrorHandler
-//   P=3+4N     local-out  DeliverError
-//   P=4+4N+i   local-out  Put{SF[i]}Error
+//   P=2+N+2*i  local-in  SF[i]
+//   P=3+N+2*i  async-med Do{SF[i]}
+//   P=2+3N     send-error GlobalErrorHandler
+//   P=3+3N     local-out  DeliverError
+//   P=4+3N+i   local-out  Put{SF[i]}Error
 
 function mixedIdx(p)            { return 2 * p - 1; }
-function globalErrorPosition(n) { return 2 + 4 * n; }
-function deliverErrorPosition(n){ return 3 + 4 * n; }
-function localInPosition(n, i)  { return 2 + n + 3 * i; }
-function doSubFlowPosition(n, i){ return 3 + n + 3 * i; }
+function globalErrorPosition(n) { return 2 + 3 * n; }
+function deliverErrorPosition(n){ return 3 + 3 * n; }
+function localInPosition(n, i)  { return 2 + n + 2 * i; }
+function doSubFlowPosition(n, i){ return 3 + n + 2 * i; }
 function globalErrorPath(n)     { return `assembly.xml#//@beans/@mixed.1/@mixed.${mixedIdx(globalErrorPosition(n))}`; }
 function sendErrorInsideDoSubFlow(n, i) {
   return `assembly.xml#//@beans/@mixed.1/@mixed.${mixedIdx(doSubFlowPosition(n, i))}/@mixed.3`;
@@ -408,7 +409,7 @@ function sendErrorInsideDoSubFlow(n, i) {
 
 // ─── assembly-diagram.xml skeleton ───────────────────────────────────────────
 
-function buildDiagramXml(projectName, subFlows) {
+export function buildDiagramXml(projectName, subFlows) {
   const n     = subFlows.length;
   const lines = [];
 
@@ -425,7 +426,6 @@ function buildDiagramXml(projectName, subFlows) {
   for (let i = 0; i < n; i++) {
     const yBase = 360 + i * 180;
     lines.push(vp(60,  yBase,      subFlows[i].id));
-    lines.push(vp(350, yBase,      `End${subFlows[i].id}`));
     lines.push(vp(170, yBase + 55, `Put${subFlows[i].id}Error`));
   }
 
@@ -433,11 +433,13 @@ function buildDiagramXml(projectName, subFlows) {
   for (let i = 0; i < n - 1; i++) {
     lines.push(conn('routesResponseTo', `Call_${subFlows[i].id}`, `Call_${subFlows[i + 1].id}`));
   }
+  // Do{SF} is the sub-flow terminal — no outgoing routes-to (there is no End{SF}).
   for (const sf of subFlows) {
     lines.push(conn('routesTo', sf.id, `Do${sf.id}`));
-    lines.push(conn('routesTo', `Do${sf.id}`, `End${sf.id}`));
   }
-  for (let i = 0; i < n; i++) lines.push(conn('routesTo', `Call_${subFlows[i].id}`, subFlows[i].id));
+  // Call_{SF} → SF dispatch is a vm:// hop, which Studio never draws — emitting a
+  // routesTo arrow for it adds an edge Studio wouldn't (validate_assembly flags it
+  // as REDUNDANT_VM_DISPATCH_ARROW). The local-in still gets its own visualProperties.
 
   lines.push(`  <connections type="routesTo">\n    <source href="${globalErrorPath(n)}"/>\n    <target href="assembly.xml#DeliverError"/>\n  </connections>`);
   for (let i = 0; i < n; i++) {
@@ -452,7 +454,7 @@ function buildDiagramXml(projectName, subFlows) {
     const sf   = subFlows[i];
     const yH   = 340 + i * 180;
     const vIdx = 3 + 2 * i;
-    lines.push(swimlane(30, yH, `${sf.id} Sub-flow`, 'MIDDLE', [sf.id, { nested: vIdx }, `End${sf.id}`]));
+    lines.push(swimlane(30, yH, `${sf.id} Sub-flow`, 'MIDDLE', [sf.id, { nested: vIdx }]));
     lines.push(swimlaneVertical(170, yH + 15, `Do${sf.id}`, `Put${sf.id}Error`));
   }
 
