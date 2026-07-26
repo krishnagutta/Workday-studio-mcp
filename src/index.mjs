@@ -29,10 +29,11 @@ import { register as registerParseServerLog } from './tools/parse-server-log.mjs
 import { register as registerLogLearning } from './tools/log-learning.mjs';
 import { register as registerRenameSteps } from './tools/rename-steps.mjs';
 import { register as registerDeleteAssemblyStep } from './tools/delete-assembly-step.mjs';
+import { register as registerGetPatterns } from './tools/get-patterns.mjs';
 
 const server = new McpServer({
   name: 'studio-file-mcp',
-  version: '1.4.0',
+  version: '1.5.0',
 });
 
 // File navigation
@@ -59,6 +60,7 @@ registerAddAssemblyStep(server);
 // Reference
 registerGetStepTypeReference(server);
 registerLookupSoapOperations(server);
+registerGetPatterns(server);
 
 // Planning (call this before any assembly XML work)
 registerPlanIntegration(server);

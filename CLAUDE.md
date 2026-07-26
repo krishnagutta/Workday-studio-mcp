@@ -70,9 +70,11 @@ This is the reviewed, structured knowledge base. It captures hard-won lessons in
 
 Entries here come from promoted `learnings.md` entries. If asked to promote a learning, move it into the right section of this file with full context and a clean example, then mark the `learnings.md` entry `**Status**: promoted`.
 
+**This file is delivered to users through the MCP.** The `get_patterns` tool reads this doc live and serves it by section or keyword search, so a teammate using the MCP in their own workspace can pull any of this guidance even though this repo's `CLAUDE.md`/`docs/` are not in their context. Promoting into this file is therefore sufficient to reach every user — no separate copy step is required for cross-cutting rules. Keep section (`## `) and subsection (`### `) headings descriptive: they are the index `get_patterns` returns and the keys users retrieve by.
+
 ### What belongs in `get-step-type-reference.mjs`
 
-If a learning is about **how a specific cc:* / cloud:* / ssk:* element behaves**, it also goes in the step type reference tool — append it to the relevant entry's `description`, `gotchas`, or `xml_example`. That way Claude finds it when planning an integration without needing to read the patterns doc.
+If a learning is about **how a specific cc:* / cloud:* / ssk:* element behaves**, ALSO co-locate it in the step type reference tool — append it to the relevant entry's `description`, `gotchas`, or `xml_example`. `get_patterns` now makes the patterns doc reachable, but duplicating an element-specific rule here still helps: Claude reads the step reference while planning that exact element, so the rule surfaces without a separate lookup. This is for element-scoped rules only; cross-cutting rules (diagram index math, swimlane layout, the add/remove three-entry rule) live solely in the patterns doc and reach users via `get_patterns`.
 
 ---
 
