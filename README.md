@@ -8,16 +8,16 @@ Everything runs **locally** on your machine — no network calls, no tenant cred
 
 ## What you get
 
-23 tools across these categories:
+25 tools across these categories:
 
 | Category | What it does |
 |---|---|
 | **Navigation** | `list_studio_projects`, `list_project_files`, `read_integration_file`, `search_studio_files`, `get_workspace_structure` |
 | **File management** | `write_integration_file`, `copy_file_from_project`, `rename_file`, `delete_file`, `validate_xml_file` |
 | **Project setup** | `create_studio_project`, `create_xsl_transform` |
-| **Assembly editing** | `list_assembly_steps`, `list_integration_params`, `add_assembly_step`, `update_sub_flow`, `rename_steps`, `validate_assembly` |
+| **Assembly editing** | `list_assembly_steps`, `list_integration_params`, `add_assembly_step`, `update_sub_flow`, `rename_steps`, `delete_assembly_step`, `validate_assembly` |
 | **Planning** | `plan_integration` — design elicitation + skeleton generator |
-| **Reference** | `get_step_type_reference` — confirmed step type docs with production XML examples; `lookup_soap_operations` — WWS service/operation lookup with WSDL links |
+| **Reference** | `get_step_type_reference` — confirmed step type docs with production XML examples; `lookup_soap_operations` — WWS service/operation lookup with WSDL links; `get_patterns` — the curated cross-integration knowledge base (diagram rules, MVEL/XSLT/RAAS idioms) by section or search |
 | **Diagnostics** | `parse_server_log` — parse a Workday integration server log from `~/Downloads` |
 | **Knowledge capture** | `log_learning` — append a discovered pattern/gotcha to the shared intake log (`learnings.md`) |
 
@@ -175,6 +175,11 @@ Returns confirmed XML examples, schema rules, and gotchas.
 
 `lookup_soap_operations` searches the Workday Web Services catalog and returns the service, common operations, and WSDL link.
 
+### Pull curated guidance before hand-editing a diagram
+> "Show me the diagram rules before I edit assembly-diagram.xml"
+
+`get_patterns` serves the curated knowledge base — the cross-integration rules that span step types (EMF `@mixed` index math, swimlane layout, the three-entry add/remove rule, MVEL/XSLT/RAAS idioms). Call it with no args for an index, `topic="Diagram Rules"` for a section, or `search="swimlane"` to find by keyword. These are the same lessons in [`docs/studio-integration-patterns.md`](docs/studio-integration-patterns.md), now reachable from any MCP session.
+
 ### Capture a discovery
 When Claude hits an undocumented Studio behavior during a session, it logs the pattern to `learnings.md` via `log_learning` — entries are reviewed and promoted into the curated knowledge base.
 
@@ -215,9 +220,11 @@ Workday-studio-mcp/
 │       ├── delete-file.mjs
 │       ├── get-step-type-reference.mjs   # Step type docs
 │       ├── lookup-soap-operations.mjs    # WWS service/operation catalog
+│       ├── get-patterns.mjs              # Serves the curated knowledge base
 │       ├── plan-integration.mjs          # Design elicitation
 │       ├── update-sub-flow.mjs           # Surgical sub-flow replacement
 │       ├── rename-steps.mjs              # Atomic step rename (assembly + diagram)
+│       ├── delete-assembly-step.mjs      # Atomic step delete (assembly + diagram)
 │       ├── validate-assembly.mjs         # Studio rules engine
 │       ├── log-learning.mjs              # Knowledge-capture intake
 │       └── parse-server-log.mjs          # Local log parser
