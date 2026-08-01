@@ -30,10 +30,11 @@ import { register as registerLogLearning } from './tools/log-learning.mjs';
 import { register as registerRenameSteps } from './tools/rename-steps.mjs';
 import { register as registerDeleteAssemblyStep } from './tools/delete-assembly-step.mjs';
 import { register as registerGetPatterns } from './tools/get-patterns.mjs';
+import { register as registerGetWorkflow } from './tools/get-workflow.mjs';
 
 const server = new McpServer({
   name: 'studio-file-mcp',
-  version: '1.6.0',
+  version: '1.7.0',
 });
 
 // File navigation
@@ -64,6 +65,9 @@ registerGetPatterns(server);
 
 // Planning (call this before any assembly XML work)
 registerPlanIntegration(server);
+
+// Lifecycle — where an integration stands and what to do next
+registerGetWorkflow(server);
 
 // Assembly editing
 registerUpdateSubFlow(server);

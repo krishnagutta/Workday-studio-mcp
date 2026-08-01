@@ -4,6 +4,7 @@ import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { config } from '../config.mjs';
 import { validateAssembly } from '../assembly-validator.mjs';
+import { recordValidation } from '../aidlc-docs.mjs';
 
 export function register(server) {
   server.tool(
@@ -58,6 +59,30 @@ export function register(server) {
       const warnings = issues.filter(i => i.severity === 'WARNING');
       const infos    = issues.filter(i => i.severity === 'INFO');
 
+      // Record the result in lifecycle state. Best-effort: no-ops when the
+      // project has no aidlc-docs/, and never turns a report into a failure.
+      let lifecycle = null;
+      try {
+        const state = await recordValidation(projectPath, {
+          clean: errors.length === 0,
+          errors: errors.length,
+          warnings: warnings.length,
+        });
+        if (state) {
+          const all = state.units_of_work ?? [];
+          const remaining = all.filter(u => u.status === 'todo_stub');
+          lifecycle = {
+            units_built: all.filter(u => u.status === 'built').length,
+            units_total: all.length,
+            next_recommended_action: errors.length
+              ? 'Fix the ERRORs above, then validate again'
+              : remaining.length
+                ? `update_sub_flow for "${remaining[0].id}"`
+                : 'Construction complete — work the Operations handoff in aidlc-docs/plan.md',
+          };
+        }
+      } catch { /* best-effort bookkeeping */ }
+
       return {
         content: [{
           type: 'text',
@@ -69,6 +94,7 @@ export function register(server) {
               warnings: warnings.length,
               info:     infos.length,
             },
+            ...(lifecycle ? { lifecycle } : {}),
             issues,
           }, null, 2),
         }],

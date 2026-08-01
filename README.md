@@ -8,7 +8,7 @@ Everything runs **locally** on your machine — no network calls, no tenant cred
 
 ## What you get
 
-25 tools across these categories:
+26 tools across these categories:
 
 | Category | What it does |
 |---|---|
@@ -16,7 +16,7 @@ Everything runs **locally** on your machine — no network calls, no tenant cred
 | **File management** | `write_integration_file`, `copy_file_from_project`, `rename_file`, `delete_file`, `validate_xml_file` |
 | **Project setup** | `create_studio_project`, `create_xsl_transform` |
 | **Assembly editing** | `list_assembly_steps`, `list_integration_params`, `add_assembly_step`, `update_sub_flow`, `rename_steps`, `delete_assembly_step`, `validate_assembly` |
-| **Planning** | `plan_integration` — design elicitation + skeleton generator |
+| **Planning** | `plan_integration` — design elicitation + skeleton generator; `get_workflow` — where an integration stands and what to do next |
 | **Reference** | `get_step_type_reference` — confirmed step type docs with production XML examples; `lookup_soap_operations` — WWS service/operation lookup with WSDL links; `get_patterns` — the curated cross-integration knowledge base (diagram rules, MVEL/XSLT/RAAS idioms) by section or search |
 | **Diagnostics** | `parse_server_log` — parse a Workday integration server log from `~/Downloads` |
 | **Knowledge capture** | `log_learning` — append a discovered pattern/gotcha to the shared intake log (`learnings.md`) |
@@ -157,6 +157,11 @@ It also writes an **`aidlc-docs/`** folder at the project root, so the design ra
 
 Commit these with your integration: they are the record of *why* it is shaped this way. Regenerating the scaffold refreshes both files but preserves the `created` date and the `decisions` log. Attribute **names** are recorded, never credential values.
 
+### Pick up where you left off
+> "What's the status of INT999_Employee_Sync?"
+
+`get_workflow` reads `aidlc-docs/state.json` and reports the phase, which sub-flows are built vs still TODO stubs, the last validation result, and the single next recommended action — without reading the XML. For a project that predates `aidlc-docs/`, call it with `retrofit=true` to derive state from the existing assembly.
+
 ### Fill in a sub-flow
 > "Fill in the GetWorkers sub-flow — here's the RAAS sample: [paste XML]"
 
@@ -233,6 +238,7 @@ Workday-studio-mcp/
 │       ├── lookup-soap-operations.mjs    # WWS service/operation catalog
 │       ├── get-patterns.mjs              # Serves the curated knowledge base
 │       ├── plan-integration.mjs          # Design elicitation
+│       ├── get-workflow.mjs              # Lifecycle status + next action
 │       ├── update-sub-flow.mjs           # Surgical sub-flow replacement
 │       ├── rename-steps.mjs              # Atomic step rename (assembly + diagram)
 │       ├── delete-assembly-step.mjs      # Atomic step delete (assembly + diagram)

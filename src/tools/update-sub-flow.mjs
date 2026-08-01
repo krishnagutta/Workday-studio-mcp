@@ -4,6 +4,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { XMLParser } from 'fast-xml-parser';
 import { validateAssembly, checkDiagramDrift } from '../assembly-validator.mjs';
+import { markUnitBuilt } from '../aidlc-docs.mjs';
 import { backupFile, resolveSafe } from '../fs.mjs';
 
 // ─── Public tool registration ─────────────────────────────────────────────────
@@ -118,6 +119,24 @@ export function register(server) {
         ? 'ws/WSAR-INF/' + backupPath.split('/WSAR-INF/').pop()
         : null;
 
+      // Lifecycle state: this unit of work is now built. Silently no-ops on
+      // projects with no aidlc-docs/ — state must never gate an edit.
+      let lifecycle = null;
+      try {
+        const state = await markUnitBuilt(projectPath, sub_flow_id);
+        if (state) {
+          const all = state.units_of_work ?? [];
+          const remaining = all.filter(u => u.status === 'todo_stub');
+          lifecycle = {
+            units_built: all.filter(u => u.status === 'built').length,
+            units_total: all.length,
+            next_recommended_action: remaining.length
+              ? `validate_assembly, then update_sub_flow for "${remaining[0].id}"`
+              : 'validate_assembly — then work the Operations handoff in aidlc-docs/plan.md',
+          };
+        }
+      } catch { /* best-effort — never fail an edit over bookkeeping */ }
+
       return {
         content: [{
           type: 'text',
@@ -125,6 +144,7 @@ export function register(server) {
             success: true,
             updated: `Do${sub_flow_id}`,
             backup,
+            ...(lifecycle ? { lifecycle } : {}),
             validation: {
               clean: issues.length === 0,
               errors:   errors.length,
