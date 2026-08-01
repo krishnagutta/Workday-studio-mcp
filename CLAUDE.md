@@ -110,9 +110,30 @@ If you (Claude) are asked to build something tenant-aware:
 
 ## Testing
 
-- The repo doesn't have a unit test suite (yet). Smoke test is `node src/index.mjs` — server should boot and print the workspace path.
-- If you add a tool, manually exercise it via Claude or the MCP inspector before opening a PR.
-- For changes to `validate-assembly` or `assembly-validator.mjs`, test against a known-good and a known-bad assembly.
+**Run `npm test` before opening a PR.** The suite uses the Node stdlib test runner (`node:test`) — no dependencies, no framework.
+
+```
+test/
+├── fixtures/assembly.mjs        # shared synthetic assembly + diagram
+├── aidlc-docs.test.mjs          # plan/state persistence
+├── assembly-validator.test.mjs  # one fires/silent pair per rule
+├── delete-assembly-step.test.mjs
+├── get-patterns.test.mjs        # runs against the REAL curated doc
+└── plan-integration.test.mjs    # scaffold output correctness
+```
+
+Conventions:
+
+- Files are `*.test.mjs`; anything else under `test/` (fixtures, helpers) is not collected.
+- **Every validator rule needs BOTH a fires-on-violation and a silent-on-clean case.** A rule tested only against bad input is indistinguishable from one that always fires.
+- **Verify against an independent oracle where you can.** `plan-integration.test.mjs` resolves diagram `@mixed` refs by actually walking the generated XML's mixed-content model rather than re-using the scaffolder's own index formulas — otherwise a wrong formula would happily verify itself.
+- Prefer real artifacts over mocks when they're cheap: `get-patterns.test.mjs` parses the actual `docs/studio-integration-patterns.md`, so a structural change to the doc fails the suite.
+- Tests that touch the filesystem use `mkdtemp` and clean up in `finally`.
+
+Still expected on top of the suite:
+
+- Smoke test `node src/index.mjs` — the server should boot and print the workspace path.
+- If you add a tool, exercise it via Claude or the MCP inspector before opening a PR — unit tests don't prove the MCP wiring.
 
 ---
 

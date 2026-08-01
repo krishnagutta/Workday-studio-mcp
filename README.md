@@ -245,6 +245,9 @@ Workday-studio-mcp/
 ├── bin/
 │   ├── install.sh
 │   └── quickstart.sh
+├── test/                       # `npm test` — node:test, no dependencies
+│   ├── fixtures/
+│   └── *.test.mjs
 ├── config.json.example
 ├── CLAUDE.md                   # Instructions for Claude when working in this repo
 ├── package.json
