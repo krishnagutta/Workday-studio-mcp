@@ -33,7 +33,7 @@ import { register as registerGetPatterns } from './tools/get-patterns.mjs';
 
 const server = new McpServer({
   name: 'studio-file-mcp',
-  version: '1.5.0',
+  version: '1.6.0',
 });
 
 // File navigation

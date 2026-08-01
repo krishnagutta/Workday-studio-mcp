@@ -147,6 +147,16 @@ Save and **restart Claude Desktop**.
 
 Claude asks design questions (data source, destination, trigger, record volume, auth, error handling) before generating anything. Then it writes a skeleton `assembly.xml` + `assembly-diagram.xml` you can open in Studio immediately.
 
+It also writes an **`aidlc-docs/`** folder at the project root, so the design rationale outlives the conversation:
+
+```
+<your project>/aidlc-docs/
+  ├── plan.md      # design brief, per-sub-flow prop contracts, open gaps, tenant handoff checklist
+  └── state.json   # lifecycle state — sub-flow status, decisions log
+```
+
+Commit these with your integration: they are the record of *why* it is shaped this way. Regenerating the scaffold refreshes both files but preserves the `created` date and the `decisions` log. Attribute **names** are recorded, never credential values.
+
 ### Fill in a sub-flow
 > "Fill in the GetWorkers sub-flow — here's the RAAS sample: [paste XML]"
 
@@ -202,6 +212,7 @@ Workday-studio-mcp/
 │   ├── fs.mjs                  # FS helpers + path traversal protection
 │   ├── xml.mjs                 # XML validation wrapper
 │   ├── assembly-validator.mjs  # Studio-specific assembly rules
+│   ├── aidlc-docs.mjs          # Persists the integration plan + lifecycle state
 │   └── tools/
 │       ├── list-projects.mjs
 │       ├── list-files.mjs

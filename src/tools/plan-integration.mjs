@@ -3,6 +3,7 @@ import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { resolveSafe } from '../fs.mjs';
+import { writeAidlcDocs, AIDLC_DIR } from '../aidlc-docs.mjs';
 
 // ─── Design brief schema ──────────────────────────────────────────────────────
 
@@ -165,12 +166,23 @@ export function register(server) {
       await writeFile(join(wsDir, 'assembly.xml'),         assemblyXml, 'utf-8');
       await writeFile(join(wsDir, 'assembly-diagram.xml'), diagramXml,  'utf-8');
 
+      // Persist the plan so the design rationale outlives this conversation.
+      // Never let a docs failure break a successful scaffold — report and move on.
+      const filesWritten = ['ws/WSAR-INF/assembly.xml', 'ws/WSAR-INF/assembly-diagram.xml'];
+      let docsWarning = null;
+      try {
+        filesWritten.push(...await writeAidlcDocs(projectPath, plan));
+      } catch (e) {
+        docsWarning = `assembly files were written, but ${AIDLC_DIR}/ could not be saved: ${e.message}`;
+      }
+
       return {
         content: [{
           type: 'text',
           text: JSON.stringify({
             success: true,
-            files_written: ['ws/WSAR-INF/assembly.xml', 'ws/WSAR-INF/assembly-diagram.xml'],
+            files_written: filesWritten,
+            ...(docsWarning ? { warning: docsWarning } : {}),
             plan,
           }, null, 2),
         }],
