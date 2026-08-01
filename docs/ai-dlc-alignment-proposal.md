@@ -150,10 +150,10 @@ Each is independently shippable and independently useful.
 
 ## 7. Open questions
 
-1. **Directory name** — `aidlc-docs/` matches the AI-DLC convention (helpful if a team already uses it elsewhere) but leaks framework jargon into a Workday project. Alternative: `integration-docs/`.
-2. **Location** — project root, or alongside the assembly in `ws/WSAR-INF/`? Root is more discoverable; `WSAR-INF` keeps Studio artifacts together. Does anything in Studio's build choke on unexpected root directories?
-3. **Retrofit** — should a tool be able to generate `aidlc-docs/` for an *existing* integration by reading its assembly? Valuable for the many projects that predate this, but inference-based and necessarily incomplete.
-4. **Scope of increment 3** — which tools should write state? Every mutation, or only `validate_assembly` (the natural "this unit is now verified" signal)?
+1. ~~**Directory name**~~ — **DECIDED 2026-07-26: `aidlc-docs/`**, matching the AI-DLC convention.
+2. ~~**Location**~~ — **DECIDED 2026-07-26: project root**, to start. Revisit if Studio's builder objects to an unexpected root directory.
+3. **Retrofit** — should a tool be able to generate `aidlc-docs/` for an *existing* integration by reading its assembly? Valuable for the many projects that predate this, but inference-based and necessarily incomplete. *(Still open — only blocks increments 2–4.)*
+4. **Scope of increment 3** — which tools should write state? Every mutation, or only `validate_assembly` (the natural "this unit is now verified" signal)? *(Still open — only blocks increment 3.)*
 
 ---
 
@@ -161,4 +161,4 @@ Each is independently shippable and independently useful.
 
 Proceed with **increment 1** as a standalone PR: persist `plan.md` + `state.json` from `plan_integration`, no other behavior change. It closes the highest-value gap, is low-risk and additive, and makes increments 2–4 possible without committing to them.
 
-Defer the naming and location questions (§7.1, §7.2) to that PR's review, since they only become concrete once files are actually being written.
+§7.1 and §7.2 are now decided (`aidlc-docs/` at project root), so increment 1 is unblocked. §7.3 and §7.4 remain open but gate only increments 2–4.
