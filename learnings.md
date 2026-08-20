@@ -1189,3 +1189,10 @@ Per-message safe date construction from ISO string (no FQCN): props['EpStartDate
 **Promote to**: all
 **Status**: promoted (patterns.md MVEL section + eval step reference + validator rule JAVA_TIME_IN_PER_MESSAGE_EVAL)
 **Promoted**: 2026-07-13
+
+### [2026-08-19] cc:integration-system service declarations have a fixed schema order
+**Category**: Schema
+**Trigger**: Adding cloud:retrieval-service to an existing cc:integration-system (INT999) after the cloud:report-service element. The MCP validate_assembly passed clean, but Studio's Problems view showed two errors on open: "cvc-complex-type.2.4.a: Invalid content was found starting with element '{urn:com.workday/esb/cloud/10.0}:retrieval-service'".
+**Pattern**: Service children of cc:integration-system must follow the XSD's fixed sequence: attribute-map-service, sequence-generator-service, delivery-service, retrieval-service, report-service. So cloud:retrieval-service goes BEFORE cloud:report-service, never after it. Authoritative source: IntegrationSystemType sequence in integration-system.xsd (~lines 529-552) under /Applications/WorkdayStudio/plugins/com.capeclear.wtp.facet.assembly_*/schemas/. Note validate_assembly does not check child ordering inside cc:integration-system — only Studio's own XSD validation catches it. Verified end-to-end 2026-08-19 on a live project (INT999): moved the declaration before report-service, Studio F5 refresh, both errors cleared.
+**Promote to**: all
+**Status**: raw
